@@ -12,6 +12,7 @@ on:
       - 'service-worker.js'
       - 'package.json'
       - 'capacitor.config.json'
+      - 'resources/**'
       - '.github/workflows/android-build.yml'
     tags:
       - 'v*'
@@ -47,6 +48,9 @@ jobs:
       - name: Generate the Android project
         run: npx cap add android
 
+      - name: Generate the branded app icon
+        run: npx capacitor-assets generate --android
+
       - name: Sync web assets into the Android project
         run: npx cap sync android
 
@@ -56,16 +60,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Rename the APK to something recognizable
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Bersales-debug.apk
+
       - name: Upload APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
           name: bersales-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/Bersales-debug.apk
           retention-days: 90
 
       - name: Publish a GitHub Release (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/Bersales-debug.apk
           generate_release_notes: true
