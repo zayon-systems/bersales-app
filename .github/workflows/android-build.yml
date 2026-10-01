@@ -32,6 +32,7 @@ on:
       - 'package.json'
       - 'capacitor.config.json'
       - 'android-debug.keystore'
+      - 'icon-source/**'
       - '.github/workflows/android-build.yml'
     tags:
       - 'v*'
@@ -70,6 +71,18 @@ jobs:
 
       - name: Generate the Android project
         run: npx cap add android
+
+      - name: Generate the app icon
+        # cap add android scaffolds the Android project from Capacitor's own
+        # generic template, including its generic blue "C" launcher icon —
+        # and since android/ is never committed (regenerated fresh every
+        # run, see the note at the top of this file), that default icon is
+        # what you get back on every build unless something re-applies the
+        # real one here, each time. icon-source/ (committed in the repo)
+        # holds the actual Bersales artwork; this renders it into every
+        # density bucket Android needs (android/app/src/main/res/mipmap-*)
+        # and wires up the adaptive-icon foreground/background layers.
+        run: npx @capacitor/assets generate --android --assetPath icon-source
 
       - name: Add the camera permission to the Android manifest
         # `cap add android` generates a fresh AndroidManifest.xml every run
