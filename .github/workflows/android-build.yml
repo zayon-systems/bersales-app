@@ -96,16 +96,24 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Rename the APK to Bersales.apk
+        # Gradle always names its raw output app-debug.apk (that's the debug
+        # build variant's default name, not something this workflow controls
+        # directly) — so without this step, that generic name is what you'd
+        # see both in the downloaded artifact and once it lands on the phone.
+        # Renaming it here is what makes the file itself read "Bersales".
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Bersales.apk
+
       - name: Upload APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bersales-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Bersales-apk
+          path: android/app/build/outputs/apk/debug/Bersales.apk
           retention-days: 90
 
       - name: Publish a GitHub Release (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/Bersales.apk
           generate_release_notes: true
