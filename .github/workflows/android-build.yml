@@ -71,6 +71,22 @@ jobs:
       - name: Generate the Android project
         run: npx cap add android
 
+      - name: Add the camera permission to the Android manifest
+        # `cap add android` generates a fresh AndroidManifest.xml every run
+        # (it's not committed — see the note at the top of this file), and
+        # Capacitor's default template does NOT request the camera, since
+        # there's no native camera plugin in this app (js/scanner.js calls
+        # the browser's own getUserMedia() inside the webview instead). With
+        # no <uses-permission> for the camera, Android has nothing to grant —
+        # that's why Settings > App info shows "No permissions required" and
+        # the in-app scanner gets "Camera access was denied or unavailable"
+        # on every device, every time. Capacitor's WebView bridge already
+        # forwards getUserMedia() camera requests to Android's native runtime
+        # permission prompt automatically — it just needs the permission
+        # declared here to have something to forward.
+        run: |
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n\n    <application#' android/app/src/main/AndroidManifest.xml
+
       - name: Sync web assets into the Android project
         run: npx cap sync android
 
