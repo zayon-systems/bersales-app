@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Bersales</title>
+<meta name="description" content="Your documents. Your data. Your control." />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="assets/icons/icon-192.png" />
+<meta name="theme-color" content="#0b0b0c" />
+<!-- Applied synchronously, before the stylesheet paints, so the app never
+     flashes the wrong theme on load (a visible flicker on every open is a
+     worse first impression than a half-second of extra inline script). -->
+<script>
+(function () {
+  try {
+    var pref = localStorage.getItem('bersales_theme') || 'system';
+    var resolved = pref === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : pref;
+    document.documentElement.setAttribute('data-theme', resolved);
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<!-- ============ PIN SETUP ============ -->
+<section id="screen-pin-setup" class="screen">
+  <div class="centered-card">
+    <h1 class="logo">Bersales</h1>
+    <p class="tagline">Your documents. Your data. Your control.</p>
+    <p class="sub">Set a PIN or password to lock your vault. This never leaves your device, and Bersales has no way to reset it for you — if you forget it, your data cannot be recovered.</p>
+    <input id="pin-setup-1" type="password" inputmode="numeric" placeholder="Create PIN / password" class="pin-input" />
+    <input id="pin-setup-2" type="password" inputmode="numeric" placeholder="Confirm PIN / password" class="pin-input" />
+    <p id="pin-setup-error" class="error-text"></p>
+    <button id="btn-pin-setup-submit" class="btn-primary">Create Vault</button>
+    <p class="fineprint">All documents are stored only on this device, encrypted. There is no cloud backup — see Settings &gt; Privacy for details.</p>
+  </div>
+</section>
+
+<!-- ============ LOCK SCREEN ============ -->
+<section id="screen-lock" class="screen">
+  <div class="centered-card">
+    <h1 class="logo">Bersales</h1>
+    <p class="tagline">Enter your PIN to unlock</p>
+    <input id="pin-lock-input" type="password" inputmode="numeric" placeholder="PIN / password" class="pin-input" />
+    <p id="pin-lock-error" class="error-text"></p>
+    <button id="btn-pin-unlock" class="btn-primary">Unlock</button>
+  </div>
+</section>
+
+<!-- ============ HOME ============ -->
+<section id="screen-home" class="screen app-screen">
+  <header class="app-header"><h2>Home</h2></header>
+  <div class="app-body">
+    <div class="summary-row">
+      <div class="summary-tile"><div class="summary-label">Total You Owe Right Now</div><div id="home-total-owed" class="summary-amount summary-amount-danger">₱0</div></div>
+    </div>
+    <h3 class="section-title">Your next 30 days</h3>
+    <div id="home-next30" class="list"></div>
+    <h3 class="section-title">Needs attention</h3>
+    <div id="home-attention" class="list"></div>
+  </div>
+</section>
+
+<!-- ============ VAULT LIST ============ -->
+<section id="screen-vault" class="screen app-screen">
+  <header class="app-header"><h2>Vault</h2><button class="btn-header-add" data-nav="add-type">+</button></header>
+  <div class="app-body">
+    <div id="vault-category-filter" class="chip-row"></div>
+    <div id="vault-list" class="list"></div>
+    <p id="vault-empty" class="empty-state" hidden>No documents yet. Tap + to add your first one.</p>
+  </div>
+</section>
+
+<!-- ============ DEBTS LIST ============ -->
+<section id="screen-debts" class="screen app-screen">
+  <header class="app-header"><h2>Debts</h2><button class="btn-header-add" data-action="add-debt">+</button></header>
+  <div class="app-body">
+    <div class="summary-row">
+      <div class="summary-tile"><div class="summary-label">You owe</div><div id="debts-total-i-owe" class="summary-amount summary-amount-danger">₱0</div></div>
+      <div class="summary-tile"><div class="summary-label">Owed to you</div><div id="debts-total-owed-to-me" class="summary-amount summary-amount-good">₱0</div></div>
+    </div>
+    <div id="debts-filter" class="chip-row"></div>
+    <div id="debts-list" class="list"></div>
+    <p id="debts-empty" class="empty-state" hidden>No debts recorded yet. Tap + to add one.</p>
+  </div>
+</section>
+
+<!-- ============ DEBT FORM ============ -->
+<section id="screen-debt-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="debts">&larr;</button><h2 id="debt-form-title">Debt</h2></header>
+  <div class="app-body">
+    <div class="form-field">
+      <label>Direction</label>
+      <select id="debt-direction" class="select-input">
+        <option value="i_owe">Money I Owe</option>
+        <option value="owed_to_me">Money Owed to Me</option>
+      </select>
+    </div>
+    <div class="form-field"><label>Person / Creditor</label><input id="debt-personName" class="text-input" type="text" /></div>
+    <div class="form-field"><label>Original Amount (₱)</label><input id="debt-originalAmount" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Outstanding Balance (₱)</label><input id="debt-outstandingBalance" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Due Date</label><input id="debt-dueDate" class="text-input" type="date" /></div>
+    <div class="form-field checkbox-field"><label><input id="debt-recurring" type="checkbox" /> Recurring installment</label></div>
+    <div class="form-field"><label>Installment Amount (₱, optional)</label><input id="debt-installmentAmount" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Interest / terms (free text, optional)</label><input id="debt-interestNote" class="text-input" type="text" placeholder="e.g. 5%/month" /></div>
+    <div class="form-field"><label>Notes</label><input id="debt-notes" class="text-input" type="text" /></div>
+    <div class="form-field checkbox-field"><label><input id="debt-settled" type="checkbox" /> Settled / fully paid</label></div>
+
+    <div id="debt-payment-log-section" hidden>
+      <h3 class="section-title">Payment Log</h3>
+      <div id="debt-payment-list" class="list payment-list"></div>
+      <div class="payment-log-row">
+        <input id="debt-payment-amount" class="text-input" type="number" inputmode="decimal" placeholder="Amount" />
+        <input id="debt-payment-date" class="text-input" type="date" />
+        <button id="btn-debt-add-payment" class="btn-secondary">Log Payment</button>
+      </div>
+      <p class="fineprint">This is a log for your own records — adding a payment here does not automatically change the outstanding balance above. Update that yourself.</p>
+    </div>
+
+    <button id="btn-debt-save" class="btn-primary">Save</button>
+    <button id="btn-debt-delete" class="btn-danger" hidden>Delete Debt</button>
+  </div>
+</section>
+
+<!-- ============ BILLS LIST ============ -->
+<section id="screen-bills" class="screen app-screen">
+  <header class="app-header"><h2>Bills</h2><button id="btn-bills-header-add" class="btn-header-add">+</button></header>
+  <div class="app-body">
+    <div id="bills-tab-filter" class="chip-row"></div>
+    <div id="bills-summary" class="summary-row"></div>
+    <div id="bills-list" class="list"></div>
+    <p id="bills-empty" class="empty-state" hidden>No bills tracked yet. Tap + to add one.</p>
+    <div id="creditcards-list" class="list" hidden></div>
+    <p id="creditcards-empty" class="empty-state" hidden>No credit cards added yet. Tap + to add one.</p>
+  </div>
+</section>
+
+<!-- ============ BILL FORM ============ -->
+<section id="screen-bill-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="bills">&larr;</button><h2 id="bill-form-title">Bill</h2></header>
+  <div class="app-body">
+    <div class="form-field"><label>Bill Name</label><input id="bill-billName" class="text-input" type="text" placeholder="e.g. Meralco, Netflix, Rent" /></div>
+    <div class="form-field">
+      <label>Category</label>
+      <select id="bill-category" class="select-input"></select>
+    </div>
+    <div class="form-field"><label>Amount (₱)</label><input id="bill-amount" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Due Date</label><input id="bill-dueDate" class="text-input" type="date" /></div>
+    <div class="form-field">
+      <label>Recurring</label>
+      <select id="bill-recurring" class="select-input">
+        <option value="none">One-time</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div class="form-field"><label>Notes</label><input id="bill-notes" class="text-input" type="text" /></div>
+    <div class="form-field checkbox-field"><label><input id="bill-paid" type="checkbox" /> Paid (this cycle)</label></div>
+    <button id="btn-bill-save" class="btn-primary">Save</button>
+    <button id="btn-bill-delete" class="btn-danger" hidden>Delete Bill</button>
+  </div>
+</section>
+
+<!-- ============ CREDIT CARD FORM ============ -->
+<section id="screen-creditcard-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="bills">&larr;</button><h2 id="creditcard-form-title">Credit Card</h2></header>
+  <div class="app-body">
+    <div class="form-field"><label>Card Name</label><input id="cc-cardName" class="text-input" type="text" placeholder="e.g. BPI Gold Mastercard" /></div>
+    <div class="form-field"><label>Bank</label><input id="cc-bank" class="text-input" type="text" /></div>
+    <div class="form-field"><label>Last 4 Digits (optional)</label><input id="cc-last4" class="text-input" type="text" inputmode="numeric" maxlength="4" placeholder="1234" /></div>
+    <div class="form-field"><label>Amount Due This Cycle (₱, optional)</label><input id="cc-amountDue" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Statement Cutoff Day of Month</label><input id="cc-statementCutoffDay" class="text-input" type="number" inputmode="numeric" min="1" max="31" placeholder="e.g. 15" /></div>
+    <div class="form-field"><label>Payment Due Day of Month</label><input id="cc-paymentDueDay" class="text-input" type="number" inputmode="numeric" min="1" max="31" placeholder="e.g. 5" /></div>
+    <div class="form-field"><label>Credit Limit (₱, optional)</label><input id="cc-creditLimit" class="text-input" type="number" inputmode="decimal" /></div>
+    <div class="form-field"><label>Notes</label><input id="cc-notes" class="text-input" type="text" /></div>
+    <p class="fineprint">Cutoff and due dates roll forward to next month automatically — just the day of month is needed, not a specific date.</p>
+    <button id="btn-cc-save" class="btn-primary">Save</button>
+    <button id="btn-cc-delete" class="btn-danger" hidden>Delete Credit Card</button>
+  </div>
+</section>
+
+<!-- ============ MORE (Health Reminders + To-Dos) ============ -->
+<section id="screen-more" class="screen app-screen">
+  <header class="app-header"><h2>More</h2><button id="btn-more-header-add" class="btn-header-add">+</button></header>
+  <div class="app-body">
+    <div id="more-tab-filter" class="chip-row"></div>
+    <div id="health-list" class="list"></div>
+    <p id="health-empty" class="empty-state" hidden>No health reminders yet. Tap + to add one.</p>
+    <p id="todos-progress" class="fineprint" hidden></p>
+    <div id="todos-list" class="list" hidden></div>
+    <p id="todos-empty" class="empty-state" hidden>No to-dos yet. Tap + to add one.</p>
+  </div>
+</section>
+
+<!-- ============ HEALTH REMINDER FORM ============ -->
+<section id="screen-health-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="more">&larr;</button><h2 id="health-form-title">Health Reminder</h2></header>
+  <div class="app-body">
+    <div class="form-field"><label>Reminder Name</label><input id="health-reminderName" class="text-input" type="text" placeholder="e.g. Annual Dental Cleaning" /></div>
+    <div class="form-field"><label>Type</label><select id="health-type" class="select-input"></select></div>
+    <div class="form-field"><label>Due Date</label><input id="health-dueDate" class="text-input" type="date" /></div>
+    <div class="form-field">
+      <label>Recurring</label>
+      <select id="health-recurring" class="select-input">
+        <option value="none">One-time</option>
+        <option value="monthly">Monthly</option>
+        <option value="quarterly">Quarterly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div class="form-field"><label>Notes</label><input id="health-notes" class="text-input" type="text" /></div>
+    <div class="form-field checkbox-field"><label><input id="health-done" type="checkbox" /> Done (this cycle)</label></div>
+    <button id="btn-health-save" class="btn-primary">Save</button>
+    <button id="btn-health-delete" class="btn-danger" hidden>Delete Reminder</button>
+  </div>
+</section>
+
+<!-- ============ TODO FORM ============ -->
+<section id="screen-todo-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="more">&larr;</button><h2 id="todo-form-title">To-Do</h2></header>
+  <div class="app-body">
+    <div class="form-field"><label>Title</label><input id="todo-title" class="text-input" type="text" /></div>
+    <div class="form-field"><label>Due Date (optional)</label><input id="todo-dueDate" class="text-input" type="date" /></div>
+    <div class="form-field"><label>Notes</label><input id="todo-notes" class="text-input" type="text" /></div>
+    <div class="form-field checkbox-field"><label><input id="todo-done" type="checkbox" /> Done</label></div>
+
+    <div id="todo-checklist-section" hidden>
+      <h3 class="section-title">Checklist</h3>
+      <div id="todo-checklist" class="list checklist-list"></div>
+      <div class="payment-log-row">
+        <input id="todo-checklist-input" class="text-input" type="text" placeholder="Add a step…" />
+        <button id="btn-todo-add-checklist-item" class="btn-secondary">Add</button>
+      </div>
+    </div>
+    <p id="todo-checklist-hint" class="fineprint">Save this to-do first to start adding checklist steps.</p>
+
+    <button id="btn-todo-save" class="btn-primary">Save</button>
+    <button id="btn-todo-delete" class="btn-danger" hidden>Delete To-Do</button>
+  </div>
+</section>
+
+<!-- ============ ADD DOCUMENT: STEP 1 — CATEGORY/TYPE ============ -->
+<section id="screen-add-type" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="vault">&larr;</button><h2>Add Document</h2></header>
+  <div class="app-body">
+    <p class="section-title">What kind of document is this?</p>
+    <select id="add-type-select" class="select-input"></select>
+    <button id="btn-add-type-next" class="btn-primary">Next</button>
+  </div>
+</section>
+
+<!-- ============ ADD DOCUMENT: STEP 2 — SCAN ============ -->
+<section id="screen-scan" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="add-type">&larr;</button><h2>Scan</h2></header>
+  <div class="app-body scan-body">
+    <video id="scan-video" playsinline autoplay muted hidden></video>
+    <canvas id="scan-canvas" hidden></canvas>
+    <div id="scan-crop-overlay" class="crop-overlay" hidden></div>
+    <div id="scan-controls" class="scan-controls">
+      <button id="btn-scan-capture" class="btn-primary">Capture</button>
+      <button id="btn-scan-import" class="btn-secondary">Import from Gallery</button>
+      <input id="scan-file-input" type="file" accept="image/*" hidden />
+      <button id="btn-scan-skip" class="btn-secondary">Skip photo, enter manually</button>
+    </div>
+    <div id="crop-controls" class="scan-controls" hidden>
+      <p class="fineprint">Corners are guessed automatically — drag any handle to fix them.</p>
+      <div class="form-field checkbox-field"><label><input id="crop-enhance-toggle" type="checkbox" checked /> Enhance (brighten &amp; even out lighting)</label></div>
+      <button id="btn-crop-apply" class="btn-primary">Use This Crop</button>
+      <button id="btn-crop-retake" class="btn-secondary">Retake</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ADD DOCUMENT: STEP 3 — FIELDS FORM ============ -->
+<section id="screen-doc-form" class="screen app-screen">
+  <header class="app-header"><button class="btn-back" data-back="vault">&larr;</button><h2 id="doc-form-title">Document Details</h2></header>
+  <div class="app-body">
+    <div id="doc-form-image-preview" class="image-preview-strip">
+      <div id="doc-form-image-list" class="image-thumb-list"></div>
+      <button type="button" id="btn-doc-add-page" class="btn-secondary">+ Add Another Page</button>
+    </div>
+    <p id="ocr-status" class="fineprint" hidden></p>
+    <form id="doc-form"></form>
+    <button id="btn-doc-save" class="btn-primary">Save to Vault</button>
+    <button id="btn-doc-delete" class="btn-danger" hidden>Delete Document</button>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section id="screen-settings" class="screen app-screen">
+  <header class="app-header"><h2>Settings</h2></header>
+  <div class="app-body">
+    <div class="form-field">
+      <label>Appearance</label>
+      <select id="theme-select" class="select-input">
+        <option value="system">System (follow device)</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+    <button id="btn-change-pin" class="btn-secondary full-width">Change PIN / Password</button>
+    <button id="btn-export" class="btn-secondary full-width">Export Encrypted Backup File</button>
+    <button id="btn-lock-now" class="btn-secondary full-width">Lock Vault Now</button>
+    <div class="privacy-card">
+      <h3>Privacy &amp; Data</h3>
+      <p>All documents, images, and records are stored only on this device, encrypted with a key derived from your PIN. Bersales has no server and does not transmit, back up, or have access to your data. Sharing a document (via Messenger, Viber, email, etc.) uses your device's own share feature — once shared, that copy is no longer protected by Bersales's encryption.</p>
+      <p>Because there is no cloud backup, losing or resetting this device means your Bersales data cannot be recovered unless you've made your own export. Use "Export Encrypted Backup File" periodically and store the file somewhere safe.</p>
+    </div>
+    <p class="fineprint app-version">Bersales v1.4.0 — vault, scanning, debts, bills, credit cards, health reminders, to-dos; family profiles and vehicle/property record UI are planned for a later phase</p>
+  </div>
+</section>
+
+<!-- ============ BOTTOM NAV ============ -->
+<nav id="bottom-nav" class="bottom-nav" hidden>
+  <button class="nav-btn" data-nav="home"><span class="nav-icon">⌂</span><span>Home</span></button>
+  <button class="nav-btn" data-nav="vault"><span class="nav-icon">▤</span><span>Vault</span></button>
+  <button class="nav-btn" data-nav="debts"><span class="nav-icon">₱</span><span>Debts</span></button>
+  <button class="nav-btn" data-nav="bills"><span class="nav-icon">▦</span><span>Bills</span></button>
+  <button class="nav-btn" data-nav="more"><span class="nav-icon">✓</span><span>More</span></button>
+  <button class="nav-btn" data-nav="settings"><span class="nav-icon">⚙</span><span>Settings</span></button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="js/templates.js"></script>
+<script src="js/crypto.js"></script>
+<script src="js/db.js"></script>
+<script src="js/vault.js"></script>
+<script src="js/scanner.js"></script>
+<script src="js/ocr.js"></script>
+<script src="js/reminders.js"></script>
+<script src="js/debts.js"></script>
+<script src="js/bills.js"></script>
+<script src="js/creditcards.js"></script>
+<script src="js/health.js"></script>
+<script src="js/todos.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

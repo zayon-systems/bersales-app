@@ -1,0 +1,226 @@
+:root {
+  /* Brand palette, sampled from the Bersales logo (black/red emblem). --accent
+     is the brand red — used for primary actions, nav highlight, the add
+     button. --info stays a separate blue, deliberately NOT tied to the brand
+     color, so "upcoming" (calm, 90 days out) doesn't visually read as urgent
+     just because red is now the brand color. */
+  --bg: #0b0b0c;
+  --surface: #19191b;
+  --surface-2: #232325;
+  --text: #f2f2f2;
+  --text-dim: #9a9a9d;
+  --accent: #f90802;
+  --accent-contrast: #ffffff;
+  --accent-text: var(--accent); /* red used AS TEXT (e.g. active nav label) — see light theme override below for why this isn't always the same value as --accent */
+  --info: #3b82f6;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --good: #22c55e;
+  --border: #2a2a2b;
+}
+
+/* Light theme — NOT just the dark palette inverted. The brand red and the
+   status colors (green/amber/red/blue) were re-checked against WCAG AA
+   contrast specifically for light backgrounds: the vivid red that reads
+   fine as button-fill-with-white-text fails as plain text on a light
+   background (~4.1:1, under the 4.5:1 AA minimum for normal-size text), and
+   the same problem is worse for the status colors sitting on a pale tinted
+   pill background. Every color below was picked to clear 4.5:1 against the
+   background it's actually used on, not eyeballed. */
+:root[data-theme="light"] {
+  --bg: #faf9f7;
+  --surface: #ffffff;
+  --surface-2: #f1efed;
+  --text: #1a1a1a;
+  --text-dim: #68676a;
+  --accent: #f90802;
+  --accent-contrast: #ffffff;
+  --accent-text: #b30000;
+  --info: #1d4ed8;
+  --danger: #b91c1c;
+  --warning: #7a4a00;
+  --good: #0f6b36;
+  --border: #e5e2df;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+.screen { display: none; min-height: 100vh; }
+.screen.active { display: block; }
+
+/* Centered card (PIN setup / lock) */
+.centered-card {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 60px 24px 24px;
+  text-align: center;
+}
+.logo { font-size: 32px; margin: 0 0 4px; letter-spacing: 0.5px; }
+.tagline { color: var(--text-dim); margin: 0 0 20px; }
+.sub { color: var(--text-dim); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
+.pin-input {
+  width: 100%; padding: 14px; margin-bottom: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 16px; text-align: center; letter-spacing: 2px;
+}
+.error-text { color: var(--danger); font-size: 13px; min-height: 18px; margin: 4px 0 12px; }
+.fineprint { color: var(--text-dim); font-size: 12px; line-height: 1.5; margin-top: 16px; }
+
+.btn-primary, .btn-secondary, .btn-danger {
+  width: 100%; padding: 14px; border-radius: 10px; border: none;
+  font-size: 16px; font-weight: 600; cursor: pointer; margin-bottom: 10px;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-secondary { background: var(--surface-2); color: var(--text); }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+.full-width { width: 100%; }
+
+/* App shell */
+.app-screen { padding-bottom: 84px; }
+.app-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px 20px; position: sticky; top: 0; background: var(--bg); z-index: 5;
+  border-bottom: 1px solid var(--border);
+}
+.app-header h2 { margin: 0; font-size: 20px; }
+.btn-back { background: none; border: none; color: var(--text); font-size: 20px; cursor: pointer; padding: 4px 8px; }
+.btn-header-add {
+  margin-left: auto; background: var(--accent); color: white; border: none; border-radius: 50%;
+  width: 34px; height: 34px; font-size: 20px; line-height: 1; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; padding: 0;
+}
+.app-body { padding: 16px 20px 20px; }
+.section-title { color: var(--text-dim); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px; }
+.section-title:first-child { margin-top: 0; }
+
+/* Lists / cards */
+.list { display: flex; flex-direction: column; gap: 10px; }
+/* .list sets display:flex, which (being an author rule) overrides the
+   browser's default `[hidden] { display: none }` UA rule — without this,
+   toggling .hidden on a list element (e.g. switching the Bills/Credit
+   Cards tab) would leave it visibly empty instead of actually hiding it. */
+.list[hidden] { display: none; }
+.doc-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+}
+.doc-card-title { font-weight: 600; margin-bottom: 2px; }
+.doc-card-sub { color: var(--text-dim); font-size: 13px; }
+.status-pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.status-critical_expired { background: rgba(239,68,68,0.15); color: var(--danger); }
+.status-attention { background: rgba(245,158,11,0.15); color: var(--warning); }
+.status-upcoming { background: rgba(59,130,246,0.15); color: var(--info); }
+.status-good { background: rgba(34,197,94,0.15); color: var(--good); }
+.status-none { background: var(--surface-2); color: var(--text-dim); }
+
+.empty-state { color: var(--text-dim); text-align: center; margin-top: 40px; font-size: 14px; }
+
+.chip-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; }
+.chip {
+  flex: none; padding: 7px 14px; border-radius: 999px; background: var(--surface-2);
+  color: var(--text-dim); font-size: 13px; cursor: pointer; border: 1px solid transparent; white-space: nowrap;
+}
+.chip.active { background: var(--accent); color: white; }
+
+/* Forms */
+.select-input, .text-input {
+  width: 100%; padding: 12px; margin-bottom: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 15px;
+}
+.form-field { margin-bottom: 14px; }
+.form-field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.checkbox-field label { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--text); }
+.checkbox-field input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Summary tiles (Debts) */
+.summary-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.summary-tile {
+  flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+}
+.summary-label { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.summary-amount { font-size: 20px; font-weight: 700; }
+.summary-amount-danger { color: var(--danger); }
+.summary-amount-good { color: var(--good); }
+.summary-amount-info { color: var(--info); }
+
+/* Payment log (Debts) */
+.payment-list { margin-bottom: 10px; }
+.payment-row {
+  display: flex; justify-content: space-between; background: var(--surface-2); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; color: var(--text-dim);
+}
+.payment-log-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.payment-log-row .text-input { margin-bottom: 0; }
+.payment-log-row .btn-secondary { width: auto; white-space: nowrap; margin-bottom: 0; }
+
+/* Checklist (To-Dos) */
+.checklist-list { margin-bottom: 10px; }
+.checklist-row {
+  display: flex; align-items: center; gap: 10px; background: var(--surface-2); border-radius: 8px;
+  padding: 10px 12px; font-size: 14px;
+}
+.checklist-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.checklist-row-text { flex: 1; }
+.checklist-row-text.done { color: var(--text-dim); text-decoration: line-through; }
+.checklist-row-remove { background: none; border: none; color: var(--text-dim); font-size: 16px; cursor: pointer; padding: 0 4px; flex: none; }
+
+/* Todo card title gets a strikethrough when the whole task is done */
+.doc-card-title.done { color: var(--text-dim); text-decoration: line-through; }
+
+/* Bill card paid toggle */
+.bill-paid-toggle {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim);
+  background: var(--surface-2); padding: 6px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.bill-paid-toggle input { accent-color: var(--good); }
+
+/* Scan screen */
+.scan-body { padding: 0; position: relative; }
+#scan-video, #scan-canvas { width: 100%; display: block; background: black; }
+.crop-overlay { position: absolute; top: 0; left: 0; }
+.scan-controls { padding: 16px 20px; }
+.image-preview { margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.image-preview img { width: 100%; display: block; }
+
+/* Multi-page scan thumbnail strip (document add/edit form) */
+.image-preview-strip { margin-bottom: 14px; }
+.image-thumb-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; }
+.image-thumb { position: relative; flex: none; width: 84px; height: 118px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.image-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-thumb-remove {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,0.65); color: white; border: none; font-size: 13px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+
+.privacy-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; margin-top: 20px;
+}
+.privacy-card h3 { margin: 0 0 8px; font-size: 15px; }
+.privacy-card p { color: var(--text-dim); font-size: 13px; line-height: 1.5; margin: 0 0 10px; }
+.app-version { text-align: center; margin-top: 20px; }
+
+/* Bottom nav */
+.bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; height: 68px;
+  background: var(--surface); border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-around; z-index: 10;
+}
+.nav-btn {
+  background: none; border: none; color: var(--text-dim); font-size: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; padding: 6px 4px;
+  flex: 1; min-width: 0;
+}
+.nav-btn.active { color: var(--accent-text); }
+.nav-icon { font-size: 19px; }
