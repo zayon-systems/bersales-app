@@ -1,0 +1,111 @@
+name: Build Android APK
+
+# Replaces the old Median.co wrapping step. This builds the PWA into a real
+# Android APK on GitHub's own servers, fresh on every run — nothing about
+# the Android project (the android/ folder, gradle files, etc.) is
+# committed to the repo; it's generated here each time by `npx cap add
+# android`, so there's nothing locally-generated to go stale or drift out
+# of sync with the web app.
+#
+# The one exception is android-debug.keystore (repo root) — see the "Install
+# the stable debug signing key" step below for why that one file IS
+# committed: without it, every fresh runner gets its own random debug
+# signing key and every build becomes un-installable over the last one.
+#
+# Triggers:
+#   - every push to main that touches the app itself (not docs/screenshots)
+#   - manually, any time, via the "Run workflow" button on the Actions tab
+#   - pushing a version tag (v1.5.0 etc.) additionally publishes a GitHub
+#     Release with the APK attached, so there's a permanent download link
+#     instead of only the 90-day build artifact
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'css/**'
+      - 'js/**'
+      - 'assets/**'
+      - 'manifest.json'
+      - 'service-worker.js'
+      - 'package.json'
+      - 'capacitor.config.json'
+      - 'android-debug.keystore'
+      - '.github/workflows/android-build.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java (required by Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Capacitor
+        run: npm install
+
+      - name: Assemble the web assets Capacitor will bundle
+        # Capacitor expects a single "webDir" folder (configured as "www" in
+        # capacitor.config.json) to copy into the native app. The live
+        # GitHub Pages site keeps serving straight from the repo root, as
+        # before — this copy only exists inside the CI run, never committed.
+        run: |
+          rm -rf www
+          mkdir -p www
+          cp -r index.html css js assets manifest.json service-worker.js www/
+
+      - name: Generate the Android project
+        run: npx cap add android
+
+      - name: Sync web assets into the Android project
+        run: npx cap sync android
+
+      - name: Install the stable debug signing key
+        # Without this, assembleDebug finds no keystore at ~/.android/debug.keystore
+        # on this fresh runner and has Gradle generate a brand-new random one on
+        # the spot — so every CI build was signed by a different key, which is
+        # why installs were failing with "App not installed" (Android refuses to
+        # install an "update" signed by a different key than what's already on
+        # the phone) and Play Protect was flagging every build as an unrecognized
+        # developer. android-debug.keystore is committed in the repo root (not a
+        # secret — it's a debug-only key with Android's standard public
+        # "android"/"android" passwords, never used for a Play Store release) so
+        # every build, on every run, signs with the same key and installs as a
+        # normal update over the last one.
+        run: |
+          mkdir -p ~/.android
+          cp android-debug.keystore ~/.android/debug.keystore
+
+      - name: Build the debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bersales-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 90
+
+      - name: Publish a GitHub Release (version tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          generate_release_notes: true
