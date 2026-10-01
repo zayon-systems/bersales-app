@@ -1,6 +1,6 @@
 {
   "name": "bersales-app",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Bersales — secure, local-only personal document vault and life organizer. Standalone PWA (HTML/CSS/JS, no build step); packaged into an Android APK via Capacitor + GitHub Actions (CI build, no Median dependency).",
   "main": "service-worker.js",
   "scripts": {
@@ -15,6 +15,7 @@
     "@capacitor/core": "^6.1.2"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.1.2"
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/assets": "^3.0.5"
   }
 }
