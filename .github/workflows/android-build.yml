@@ -49,7 +49,7 @@ jobs:
         run: npx cap add android
 
       - name: Generate the branded app icon
-        run: npx capacitor-assets generate --android
+        run: npx capacitor-assets generate --android --assetPath resources
 
       - name: Sync web assets into the Android project
         run: npx cap sync android
