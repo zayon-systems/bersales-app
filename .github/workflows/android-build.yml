@@ -79,7 +79,7 @@ jobs:
         # run, see the note at the top of this file), that default icon is
         # what you get back on every build unless something re-applies the
         # real one here, each time. icon-source/ (committed in the repo)
-        # holds the actual Bersales artwork; this renders it into every
+        # holds the actual Bersales Secure artwork; this renders it into every
         # density bucket Android needs (android/app/src/main/res/mipmap-*)
         # and wires up the adaptive-icon foreground/background layers.
         run: npx @capacitor/assets generate --android --assetPath icon-source
@@ -125,24 +125,24 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Rename the APK to Bersales.apk
+      - name: Rename the APK to BersalesSecure.apk
         # Gradle always names its raw output app-debug.apk (that's the debug
         # build variant's default name, not something this workflow controls
         # directly) — so without this step, that generic name is what you'd
         # see both in the downloaded artifact and once it lands on the phone.
-        # Renaming it here is what makes the file itself read "Bersales".
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/Bersales.apk
+        # Renaming it here is what makes the file itself read "BersalesSecure".
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/BersalesSecure.apk
 
       - name: Upload APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Bersales-apk
-          path: android/app/build/outputs/apk/debug/Bersales.apk
+          name: BersalesSecure-apk
+          path: android/app/build/outputs/apk/debug/BersalesSecure.apk
           retention-days: 90
 
       - name: Publish a GitHub Release (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/Bersales.apk
+          files: android/app/build/outputs/apk/debug/BersalesSecure.apk
           generate_release_notes: true
