@@ -163,6 +163,7 @@
   function lockVault() {
     Crypto.lock();
     Scanner.stopCamera();
+    hideLiveQuadOverlay();
     unlockedUI(false);
     document.getElementById('pin-lock-input').value = '';
     showScreen('lock');
@@ -182,54 +183,15 @@
     showScreen('home');
   });
 
-  // --- Restore from backup file (fresh install / new device) -------------
-  //
-  // This is the actual fix for "I had to uninstall to update, and lost
-  // everything": Export already existed, but nothing read an export file
-  // back in, so a forced reinstall meant starting over. This writes the
-  // backup's salt/verifier/encrypted records straight in and sends the user
-  // to the Lock screen — NOT through "Create Vault" above, which would call
-  // Crypto.setupPin() and generate a brand-new salt/verifier, orphaning the
-  // records this just restored (they're still encrypted under the OLD
-  // PIN's key). The user unlocks with whatever PIN they used when they
-  // created that backup, same as always — there's still no way to reset a
-  // forgotten PIN, restoring a backup doesn't change that.
-  document.getElementById('btn-pin-setup-restore').addEventListener('click', () => {
-    document.getElementById('pin-setup-restore-file').click();
-  });
-
-  document.getElementById('pin-setup-restore-file').addEventListener('change', async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ''; // allow re-selecting the same file if this is retried
-    if (!file) return;
-
-    let bundle;
-    try {
-      bundle = JSON.parse(await file.text());
-    } catch (err) {
-      alert("Couldn't read that file — make sure it's an unedited Bersales Secure backup .json file.");
-      return;
-    }
-    if (!bundle || bundle.bersalesBackup !== true || !bundle.salt || !bundle.verifier || !bundle.stores) {
-      alert("That doesn't look like a Bersales Secure backup file.");
-      return;
-    }
-    if (!confirm('Restore this backup into a fresh vault here? You\'ll need the PIN you used when this backup was created to unlock it afterward — not a new one.')) {
-      return;
-    }
-
-    localStorage.setItem('bersales_salt', bundle.salt);
-    localStorage.setItem('bersales_verifier', bundle.verifier);
-    for (const store of DB.STORES) {
-      const rows = bundle.stores[store] || [];
-      for (const row of rows) {
-        await DB.putRaw(store, row.id, row.payload);
-      }
-    }
-
-    alert('Backup restored. Enter the PIN you used when you created this backup to unlock your vault.');
-    showScreen('lock');
-  });
+  // Restore-from-backup used to live here (PIN Setup screen). Removed by
+  // deliberate choice, not oversight: losing the device now means starting
+  // over and re-entering records by hand — accepted so there's no restore
+  // path at all (not even the empty-vault-only one, which carried no
+  // security trade-off of its own) to reason about or maintain. Export
+  // (Settings → Export) is unaffected and still works the same as always;
+  // there's just currently nothing in the app that reads an export file
+  // back in. See git history around v1.6.2–v1.6.4 if restore is ever
+  // worth revisiting.
 
   document.getElementById('btn-pin-unlock').addEventListener('click', async () => {
     const pin = document.getElementById('pin-lock-input').value;
@@ -473,16 +435,53 @@
     document.getElementById('scan-crop-overlay').hidden = true;
     document.getElementById('crop-controls').hidden = true;
     document.getElementById('scan-controls').hidden = false;
+    hideLiveQuadOverlay();
     video.hidden = false;
     try {
       await Scanner.startCamera(video);
+      // Live tracking outline on the preview, before Capture is tapped —
+      // see the design note above .live-quad-overlay in css/styles.css and
+      // the comment above Scanner.startLiveDetection in js/scanner.js for
+      // why this polls on an interval rather than running every frame.
+      // Manual tap-to-capture stays the only way to actually take the
+      // photo; this is tracking feedback only, never an auto-shutter.
+      Scanner.startLiveDetection(video, updateLiveQuadOverlay);
     } catch (e) {
       alert('Camera access was denied or unavailable. You can still enter this document manually.');
     }
   }
 
+  // Positions/draws the live-tracking polygon using the same "scale from
+  // the element's native resolution to its actual rendered CSS size" trick
+  // updateHandlePositions() below uses for the post-capture crop overlay —
+  // anchored to the video's real offsetLeft/offsetTop/size rather than
+  // assumed to start at 0,0, since #scan-video is horizontally centered
+  // (see the centering note in css/styles.css).
+  function updateLiveQuadOverlay(corners) {
+    const video = document.getElementById('scan-video');
+    const overlaySvg = document.getElementById('scan-live-quad');
+    if (!corners || video.hidden) { overlaySvg.hidden = true; return; }
+    const rect = video.getBoundingClientRect();
+    if (!rect.width || !rect.height || !video.videoWidth) { overlaySvg.hidden = true; return; }
+    const scaleX = rect.width / video.videoWidth;
+    const scaleY = rect.height / video.videoHeight;
+    overlaySvg.style.left = video.offsetLeft + 'px';
+    overlaySvg.style.top = video.offsetTop + 'px';
+    overlaySvg.style.width = rect.width + 'px';
+    overlaySvg.style.height = rect.height + 'px';
+    overlaySvg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+    const points = corners.map((c) => `${c.x * scaleX},${c.y * scaleY}`).join(' ');
+    overlaySvg.querySelector('polygon').setAttribute('points', points);
+    overlaySvg.hidden = false;
+  }
+
+  function hideLiveQuadOverlay() {
+    document.getElementById('scan-live-quad').hidden = true;
+  }
+
   document.getElementById('btn-scan-skip').addEventListener('click', () => {
     Scanner.stopCamera();
+    hideLiveQuadOverlay();
     if (addingAnotherPage) {
       addingAnotherPage = false;
       showScreen('doc-form');
@@ -521,6 +520,7 @@
   document.getElementById('btn-scan-capture').addEventListener('click', () => {
     const canvas = Scanner.capturePhoto();
     Scanner.stopCamera();
+    hideLiveQuadOverlay();
     document.getElementById('scan-video').hidden = true;
     document.getElementById('scan-controls').hidden = true;
     setupCropUI(canvas);
@@ -551,6 +551,7 @@
       URL.revokeObjectURL(url);
     }
     Scanner.stopCamera();
+    hideLiveQuadOverlay();
     document.getElementById('scan-video').hidden = true;
     document.getElementById('scan-controls').hidden = true;
     const canvas = document.createElement('canvas');
@@ -633,6 +634,14 @@
     const displayCanvas = document.getElementById('scan-canvas');
     const rect = displayCanvas.getBoundingClientRect();
     const overlay = document.getElementById('scan-crop-overlay');
+    // The canvas is now horizontally centered in .scan-body (css/styles.css,
+    // the "way off-set" preview fix) instead of sitting flush at the
+    // container's left edge, so the overlay — absolutely positioned within
+    // that same .scan-body — can no longer rely on its CSS top:0/left:0
+    // happening to coincide with the canvas. Anchor it explicitly to the
+    // canvas's actual offset instead, every time handles are repositioned.
+    overlay.style.left = displayCanvas.offsetLeft + 'px';
+    overlay.style.top = displayCanvas.offsetTop + 'px';
     overlay.style.width = rect.width + 'px';
     overlay.style.height = rect.height + 'px';
     const scaleX = rect.width / displayCanvas.width;

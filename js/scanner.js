@@ -5,21 +5,27 @@
 // and enhancement all happen in a canvas in memory before the result is
 // handed to vault.js for encrypted storage.
 //
-// Corner detection note: autoDetectCorners() below is a dependency-free
-// edge-contrast heuristic, NOT a full computer-vision pipeline. A real
-// CamScanner-grade detector (Canny edges + contour fitting, e.g. via
-// OpenCV.js) would mean shipping an 8MB+ WASM blob in an app whose whole
-// pitch is "small, offline, local-only" — a bad trade for a first release.
-// Instead this scans inward from each corner of the frame along the
-// diagonal looking for the first strong contrast edge, which works well
-// when the document has reasonable contrast against the surface under it
-// (the common case), and falls back to a fixed inset when it can't find a
-// confident edge. Like CamScanner itself, the result is always shown as
-// draggable handles — this is a smart starting guess, not a blind crop.
+// Corner detection note: detectQuadCore() below (see "Document quad
+// detection") is a real classical-CV pipeline — Sobel edges, non-max
+// suppression, a Hough line transform, then fitting the document's 4 sides
+// from the dominant pair of roughly-perpendicular line directions — written
+// in plain JS/canvas, not the old single-shot "scan inward from each frame
+// corner along a diagonal" heuristic this replaced. Still dependency-free:
+// a real CamScanner-grade contour detector usually leans on OpenCV.js, an
+// 8MB+ WASM blob that's a bad trade for an offline-first, small-footprint
+// app, so this gets most of the way there (validated against synthetic
+// rotated-document test images — see git history / PR notes around
+// v1.7.0) without that cost. Like CamScanner, the result is always shown
+// as draggable handles after capture — a strong starting guess, not a
+// blind crop — and is also run continuously (at a smaller, faster working
+// resolution — see startLiveDetection()) to show a live tracking outline
+// on the camera preview before the user taps Capture.
 
 const Scanner = (() => {
   let stream = null;
   let videoEl = null;
+  let liveDetectionTimer = null;
+  let liveDetectionBusy = false;
 
   async function startCamera(videoElement) {
     videoEl = videoElement;
@@ -33,9 +39,53 @@ const Scanner = (() => {
   }
 
   function stopCamera() {
+    stopLiveDetection();
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
       stream = null;
+    }
+  }
+
+  // --- Live quad tracking (runs while the camera preview is up, before
+  // capture) --------------------------------------------------------------
+  //
+  // Polls the live video on an interval (not every frame — see the timing
+  // note above detectQuadCore) and calls onDetected(corners|null) with
+  // whatever was found, in the VIDEO ELEMENT'S NATIVE pixel space
+  // (videoWidth/videoHeight) — same convention autoDetectCorners() uses for
+  // the canvas it's given, so the caller always scales from native
+  // resolution to whatever CSS size the element is actually rendered at
+  // (app.js already does this for the post-capture crop handles; the live
+  // overlay does the same thing). onDetected is called with null whenever
+  // nothing was found that frame, so the caller can hide the overlay rather
+  // than leave a stale outline on screen.
+  //
+  // The busy flag means a slow run (e.g. an underpowered phone, or the
+  // first run before the JIT has warmed up) just skips ticks instead of
+  // piling up overlapping detection passes — worst case the outline
+  // updates less often, it never backs up.
+  function startLiveDetection(videoElement, onDetected, intervalMs) {
+    stopLiveDetection();
+    const interval = intervalMs || 300;
+    liveDetectionTimer = setInterval(() => {
+      if (liveDetectionBusy) return;
+      if (!videoElement.videoWidth || !videoElement.videoHeight) return;
+      liveDetectionBusy = true;
+      try {
+        const corners = detectQuadFromVideoFrame(videoElement);
+        onDetected(corners);
+      } catch (e) {
+        onDetected(null);
+      } finally {
+        liveDetectionBusy = false;
+      }
+    }, interval);
+  }
+
+  function stopLiveDetection() {
+    if (liveDetectionTimer) {
+      clearInterval(liveDetectionTimer);
+      liveDetectionTimer = null;
     }
   }
 
@@ -208,7 +258,293 @@ const Scanner = (() => {
     ];
   }
 
-  // --- Auto corner detection (heuristic, see file header note) ---------
+  // --- Document quad detection -------------------------------------------
+  //
+  // Classical pipeline, same shape real scanner apps use for this step:
+  // blur -> Sobel edges -> non-max suppression (thin the edges) -> adaptive
+  // threshold -> Hough transform (find the strongest straight lines) -> fit
+  // the document's 4 sides from the two dominant, roughly-perpendicular
+  // line directions -> order the 4 intersections as TL/TR/BR/BL. Operates
+  // on a plain {data: Float32Array grayscale, w, h} buffer with no
+  // DOM/canvas dependency in the core math, so it was unit-tested against
+  // synthetic rotated-document images (various angles/noise levels) before
+  // ever running against a real camera frame — see git history / PR notes
+  // around v1.7.0 for that test harness. Two callers downscale a real
+  // canvas/video frame into that buffer and scale the result back up:
+  // autoDetectCorners() (after capture, higher resolution, one-shot) and
+  // detectQuadFromVideoFrame() (live, lower resolution, polled — see
+  // startLiveDetection() above).
+  //
+  // Known soft spot: a document rotated at *exactly* 45 degrees can
+  // destabilize which pair of line directions gets picked as "the two
+  // sides" (a tie-breaking edge case in the grouping step, not a crash) —
+  // real photos are essentially never rotated at precisely 45.0 degrees,
+  // so this wasn't chased further. Any failure mode here — this edge case,
+  // a genuinely low-contrast document, an exception from an unsupported
+  // canvas op — just means detectQuadCore() returns null, which both
+  // callers already treat as "nothing confident found."
+
+  function gaussianBlur(gray, w, h) {
+    const k = [1, 4, 6, 4, 1], ksum = 16;
+    const tmp = new Float32Array(w * h);
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let acc = 0;
+        for (let t = -2; t <= 2; t++) {
+          const xx = Math.min(w - 1, Math.max(0, x + t));
+          acc += gray[y * w + xx] * k[t + 2];
+        }
+        tmp[y * w + x] = acc / ksum;
+      }
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let acc = 0;
+        for (let t = -2; t <= 2; t++) {
+          const yy = Math.min(h - 1, Math.max(0, y + t));
+          acc += tmp[yy * w + x] * k[t + 2];
+        }
+        out[y * w + x] = acc / ksum;
+      }
+    }
+    return out;
+  }
+
+  function sobel(gray, w, h) {
+    const mag = new Float32Array(w * h);
+    const dir = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const gx =
+          -gray[i - w - 1] + gray[i - w + 1] +
+          -2 * gray[i - 1] + 2 * gray[i + 1] +
+          -gray[i + w - 1] + gray[i + w + 1];
+        const gy =
+          -gray[i - w - 1] - 2 * gray[i - w] - gray[i - w + 1] +
+          gray[i + w - 1] + 2 * gray[i + w] + gray[i + w + 1];
+        mag[i] = Math.sqrt(gx * gx + gy * gy);
+        let a = Math.atan2(gy, gx);
+        if (a < 0) a += Math.PI;
+        dir[i] = a;
+      }
+    }
+    return { mag, dir };
+  }
+
+  function nonMaxSuppress(mag, dir, w, h) {
+    const out = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const m = mag[i];
+        if (m === 0) continue;
+        const deg = (dir[i] * 180 / Math.PI) % 180;
+        let n1, n2;
+        if (deg < 22.5 || deg >= 157.5) { n1 = mag[i - 1]; n2 = mag[i + 1]; }
+        else if (deg < 67.5) { n1 = mag[i - w + 1]; n2 = mag[i + w - 1]; }
+        else if (deg < 112.5) { n1 = mag[i - w]; n2 = mag[i + w]; }
+        else { n1 = mag[i - w - 1]; n2 = mag[i + w + 1]; }
+        out[i] = (m >= n1 && m >= n2) ? m : 0;
+      }
+    }
+    return out;
+  }
+
+  function binarizeEdges(mag, w, h) {
+    let sum = 0, sumSq = 0, count = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (mag[i] <= 0) continue;
+      sum += mag[i]; sumSq += mag[i] * mag[i]; count++;
+    }
+    if (count === 0) return { edges: new Uint8Array(w * h), count: 0 };
+    const mean = sum / count;
+    const variance = Math.max(0, sumSq / count - mean * mean);
+    const threshold = mean + Math.sqrt(variance) * 0.4; // post-NMS, so a looser k than a raw gradient map needs
+    const edges = new Uint8Array(w * h);
+    let edgeCount = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (mag[i] > threshold) { edges[i] = 1; edgeCount++; }
+    }
+    return { edges, count: edgeCount };
+  }
+
+  function houghLines(edges, w, h, thetaSteps) {
+    const diag = Math.ceil(Math.sqrt(w * w + h * h));
+    const rhoOffset = diag;
+    const rhoBins = diag * 2;
+    const cosT = new Float32Array(thetaSteps);
+    const sinT = new Float32Array(thetaSteps);
+    for (let t = 0; t < thetaSteps; t++) {
+      const theta = (t * Math.PI) / thetaSteps;
+      cosT[t] = Math.cos(theta);
+      sinT[t] = Math.sin(theta);
+    }
+    const accum = new Int32Array(thetaSteps * rhoBins);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!edges[y * w + x]) continue;
+        for (let t = 0; t < thetaSteps; t++) {
+          const rho = x * cosT[t] + y * sinT[t];
+          const rb = Math.round(rho) + rhoOffset;
+          if (rb < 0 || rb >= rhoBins) continue;
+          accum[t * rhoBins + rb]++;
+        }
+      }
+    }
+
+    // Collect local-maxima peaks, suppressing a window around each chosen
+    // peak so the same physical edge doesn't dominate the top-N list with
+    // near-duplicate (theta,rho) entries.
+    const peaks = [];
+    const thetaWin = 4, rhoWin = 8;
+    const minVotes = Math.max(8, Math.round(Math.min(w, h) * 0.05));
+    for (let p = 0; p < 24; p++) {
+      let best = -1, bestT = 0, bestR = 0;
+      for (let t = 0; t < thetaSteps; t++) {
+        for (let r = 0; r < rhoBins; r++) {
+          const v = accum[t * rhoBins + r];
+          if (v > best) { best = v; bestT = t; bestR = r; }
+        }
+      }
+      if (best < minVotes) break;
+      peaks.push({ theta: (bestT * Math.PI) / thetaSteps, rho: bestR - rhoOffset, votes: best });
+      for (let dt = -thetaWin; dt <= thetaWin; dt++) {
+        const tt = ((bestT + dt) % thetaSteps + thetaSteps) % thetaSteps;
+        for (let dr = -rhoWin; dr <= rhoWin; dr++) {
+          const rr = bestR + dr;
+          if (rr < 0 || rr >= rhoBins) continue;
+          accum[tt * rhoBins + rr] = 0;
+        }
+      }
+    }
+    return peaks;
+  }
+
+  function intersectLines(l1, l2) {
+    const a1 = Math.cos(l1.theta), b1 = Math.sin(l1.theta), c1 = l1.rho;
+    const a2 = Math.cos(l2.theta), b2 = Math.sin(l2.theta), c2 = l2.rho;
+    const det = a1 * b2 - a2 * b1;
+    if (Math.abs(det) < 1e-6) return null;
+    return { x: (c1 * b2 - c2 * b1) / det, y: (a1 * c2 - a2 * c1) / det };
+  }
+
+  function angleDelta(a, b) {
+    const d = Math.abs(a - b) % Math.PI;
+    return Math.min(d, Math.PI - d);
+  }
+
+  function dominantPerpendicularAxes(lines) {
+    // Vote-weighted histogram over line angle (mod 180deg, 18 bins of
+    // 10deg) finds the two dominant edge directions directly, rather than
+    // anchoring on whichever single line happened to get the most raw
+    // Hough votes — that anchor approach misclassifies lines when the
+    // document is rotated close to 45deg, where both edge directions end
+    // up roughly equidistant from an arbitrary single-line anchor.
+    const binCount = 18, binSize = Math.PI / binCount;
+    const weight = new Float32Array(binCount);
+    for (const l of lines) {
+      const b = Math.floor((l.theta % Math.PI) / binSize) % binCount;
+      weight[b] += l.votes;
+    }
+    let best = null;
+    for (let b1 = 0; b1 < binCount; b1++) {
+      for (let b2 = b1 + 1; b2 < binCount; b2++) {
+        const a1 = (b1 + 0.5) * binSize, a2 = (b2 + 0.5) * binSize;
+        const d = angleDelta(a1, a2);
+        if (d < (70 * Math.PI / 180) || d > (110 * Math.PI / 180)) continue;
+        const score = weight[b1] + weight[b2];
+        if (!best || score > best.score) best = { score, a1, a2 };
+      }
+    }
+    return best;
+  }
+
+  function fitQuadFromLines(lines) {
+    if (lines.length < 4) return null;
+    const axes = dominantPerpendicularAxes(lines);
+    if (!axes) return null;
+    const groupA = [], groupB = [];
+    for (const l of lines) {
+      if (angleDelta(l.theta, axes.a1) < (25 * Math.PI / 180)) groupA.push(l);
+      else if (angleDelta(l.theta, axes.a2) < (25 * Math.PI / 180)) groupB.push(l);
+    }
+    if (groupA.length < 2 || groupB.length < 2) return null;
+
+    function normalize(group) {
+      const base = group[0].theta;
+      return group.map((l) => {
+        let theta = l.theta, rho = l.rho;
+        if (Math.cos(theta - base) < 0) { theta -= Math.PI; rho = -rho; }
+        return { theta, rho };
+      });
+    }
+    const normA = normalize(groupA).sort((a, b) => a.rho - b.rho);
+    const normB = normalize(groupB).sort((a, b) => a.rho - b.rho);
+    const aLow = normA[0], aHigh = normA[normA.length - 1];
+    const bLow = normB[0], bHigh = normB[normB.length - 1];
+
+    const p1 = intersectLines(aLow, bLow);
+    const p2 = intersectLines(aLow, bHigh);
+    const p3 = intersectLines(aHigh, bHigh);
+    const p4 = intersectLines(aHigh, bLow);
+    if (!p1 || !p2 || !p3 || !p4) return null;
+    return [p1, p2, p3, p4];
+  }
+
+  function orderCorners(pts) {
+    const sums = pts.map((p) => p.x + p.y);
+    const diffs = pts.map((p) => p.y - p.x);
+    const tl = pts[sums.indexOf(Math.min(...sums))];
+    const br = pts[sums.indexOf(Math.max(...sums))];
+    const tr = pts[diffs.indexOf(Math.min(...diffs))];
+    const bl = pts[diffs.indexOf(Math.max(...diffs))];
+    return [tl, tr, br, bl];
+  }
+
+  function shoelaceArea(pts) {
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const j = (i + 1) % pts.length;
+      area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    return Math.abs(area / 2);
+  }
+
+  function detectQuadCore(gray, w, h, thetaSteps) {
+    const blurred = gaussianBlur(gray, w, h);
+    const { mag, dir } = sobel(blurred, w, h);
+    const thin = nonMaxSuppress(mag, dir, w, h);
+    const { edges, count } = binarizeEdges(thin, w, h);
+    if (count < 20) return null;
+    const lines = houghLines(edges, w, h, thetaSteps);
+    const quad = fitQuadFromLines(lines);
+    if (!quad) return null;
+    const ordered = orderCorners(quad);
+    const margin = Math.max(w, h) * 0.15;
+    for (const p of ordered) {
+      if (p.x < -margin || p.y < -margin || p.x > w + margin || p.y > h + margin) return null;
+    }
+    if (shoelaceArea(ordered) < w * h * 0.15) return null;
+    return ordered;
+  }
+
+  function canvasToGray(canvas, maxDim) {
+    const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
+    const w = Math.max(10, Math.round(canvas.width * scale));
+    const h = Math.max(10, Math.round(canvas.height * scale));
+    const small = document.createElement('canvas');
+    small.width = w; small.height = h;
+    const sctx = small.getContext('2d');
+    sctx.drawImage(canvas, 0, 0, w, h);
+    const { data } = sctx.getImageData(0, 0, w, h);
+    const gray = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+    }
+    return { gray, w, h, scale };
+  }
 
   function cornersAreSane(corners, imgW, imgH) {
     const xs = corners.map((c) => c.x);
@@ -218,73 +554,48 @@ const Scanner = (() => {
     return spanW > imgW * 0.3 && spanH > imgH * 0.3;
   }
 
+  // Post-capture: higher resolution, full theta precision, runs once — used
+  // to seed the draggable crop handles. Always returns 4 corners (falls
+  // back to a fixed inset on any failure, same contract as before this
+  // rewrite), since the crop step needs a starting guess no matter what.
   function autoDetectCorners(sourceCanvas) {
     const fallback = defaultCorners(sourceCanvas.width, sourceCanvas.height);
     try {
-      const maxDim = 500;
-      const scale = Math.min(1, maxDim / Math.max(sourceCanvas.width, sourceCanvas.height));
-      const w = Math.max(10, Math.round(sourceCanvas.width * scale));
-      const h = Math.max(10, Math.round(sourceCanvas.height * scale));
-      const small = document.createElement('canvas');
-      small.width = w; small.height = h;
-      const sctx = small.getContext('2d');
-      sctx.drawImage(sourceCanvas, 0, 0, w, h);
-      const { data } = sctx.getImageData(0, 0, w, h);
-
-      // Grayscale.
-      const gray = new Float32Array(w * h);
-      for (let i = 0; i < w * h; i++) {
-        gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
-      }
-
-      // Simple gradient magnitude (central differences) as an edge map.
-      const grad = new Float32Array(w * h);
-      let sum = 0, sumSq = 0, count = 0;
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = y * w + x;
-          const gx = gray[idx + 1] - gray[idx - 1];
-          const gy = gray[idx + w] - gray[idx - w];
-          const mag = Math.sqrt(gx * gx + gy * gy);
-          grad[idx] = mag;
-          sum += mag; sumSq += mag * mag; count++;
-        }
-      }
-      const mean = sum / count;
-      const variance = Math.max(0, sumSq / count - mean * mean);
-      const threshold = mean + Math.sqrt(variance) * 1.2;
-
-      function findCorner(startX, startY, dirX, dirY) {
-        const maxSteps = Math.min(w, h) * 0.45;
-        for (let step = 2; step < maxSteps; step++) {
-          const x = Math.round(startX + dirX * step);
-          const y = Math.round(startY + dirY * step);
-          if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) break;
-          let hit = false;
-          for (let oy = -1; oy <= 1 && !hit; oy++) {
-            for (let ox = -1; ox <= 1; ox++) {
-              if (grad[(y + oy) * w + (x + ox)] > threshold) { hit = true; break; }
-            }
-          }
-          if (hit) return { x: x / scale, y: y / scale };
-        }
-        return null;
-      }
-
-      const insetX = w * 0.06, insetY = h * 0.06;
-      const detected = [
-        findCorner(insetX, insetY, 1, 1),
-        findCorner(w - insetX, insetY, -1, 1),
-        findCorner(w - insetX, h - insetY, -1, -1),
-        findCorner(insetX, h - insetY, 1, -1)
-      ].map((c, i) => c || fallback[i]);
-
-      return cornersAreSane(detected, sourceCanvas.width, sourceCanvas.height) ? detected : fallback;
+      const { gray, w, h, scale } = canvasToGray(sourceCanvas, 560);
+      const detected = detectQuadCore(gray, w, h, 180);
+      if (!detected) return fallback;
+      const scaled = detected.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+      return cornersAreSane(scaled, sourceCanvas.width, sourceCanvas.height) ? scaled : fallback;
     } catch (e) {
-      // Any failure here (unsupported canvas ops, etc.) just falls back to
-      // the old fixed inset — the user can still drag corners manually.
       return fallback;
     }
+  }
+
+  // Live preview: lower resolution, fewer theta steps, polled repeatedly
+  // (see startLiveDetection above) — speed matters more than precision
+  // here, since it's just a tracking outline, not the actual crop.
+  // Returns null (not a fallback) when nothing confident is found, so the
+  // caller can hide the live overlay instead of showing a fake box.
+  function detectQuadFromVideoFrame(videoElement) {
+    const vw = videoElement.videoWidth, vh = videoElement.videoHeight;
+    if (!vw || !vh) return null;
+    const maxDim = 320;
+    const scale = Math.min(1, maxDim / Math.max(vw, vh));
+    const w = Math.max(10, Math.round(vw * scale));
+    const h = Math.max(10, Math.round(vh * scale));
+    const small = document.createElement('canvas');
+    small.width = w; small.height = h;
+    const sctx = small.getContext('2d');
+    sctx.drawImage(videoElement, 0, 0, w, h); // drawImage accepts a <video> source directly
+    const { data } = sctx.getImageData(0, 0, w, h);
+    const gray = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+    }
+    const detected = detectQuadCore(gray, w, h, 90);
+    if (!detected) return null;
+    const scaled = detected.map((p) => ({ x: p.x / scale, y: p.y / scale }));
+    return cornersAreSane(scaled, vw, vh) ? scaled : null;
   }
 
   // --- Auto-enhance (white balance + contrast stretch + shadow lift) ---
@@ -350,5 +661,9 @@ const Scanner = (() => {
     return canvas;
   }
 
-  return { startCamera, stopCamera, capturePhoto, warpToRectangle, defaultCorners, autoDetectCorners, enhanceCanvas, focusAt };
+  return {
+    startCamera, stopCamera, capturePhoto, warpToRectangle, defaultCorners,
+    autoDetectCorners, enhanceCanvas, focusAt,
+    startLiveDetection, stopLiveDetection, detectQuadFromVideoFrame
+  };
 })();

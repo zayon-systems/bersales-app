@@ -200,13 +200,41 @@ html, body {
    getBoundingClientRect(), which would go wrong under something like
    object-fit:cover. Trade-off: on a very tall/narrow stream this can leave
    black bars beside the image rather than filling the full width — accepted
-   deliberately so the capture button stays reachable without scrolling. */
+   deliberately so the capture button stays reachable without scrolling.
+
+   margin-left/right:auto centers that leftover space evenly on both sides.
+   Without it (as originally shipped) the element just sits flush against
+   the container's left edge per normal block layout, so all the leftover
+   width piles up as one lopsided blank strip on the right — which is what
+   was reported as the preview looking "way off-set." Centering it also
+   means updateHandlePositions() in app.js can no longer assume the canvas
+   sits at the overlay's own top:0/left:0 — see the offsetLeft/offsetTop
+   fix there. */
 #scan-video, #scan-canvas {
   display: block; width: auto; max-width: 100%;
   height: auto; max-height: 48vh;
+  margin-left: auto; margin-right: auto;
   background: black;
 }
 .crop-overlay { position: absolute; top: 0; left: 0; }
+
+/* Live document-tracking outline, shown on the camera preview BEFORE
+   capture (app.js's updateLiveQuadOverlay, fed by Scanner.startLiveDetection
+   in js/scanner.js). Positioned/sized in JS exactly like .crop-overlay —
+   anchored to #scan-video's actual offsetLeft/offsetTop/rendered size,
+   since the video is centered (see the comment above #scan-video) rather
+   than assumed to sit at the container's top-left. --good (green) is used
+   deliberately instead of the brand red --accent used by the post-capture
+   crop handles, so the two steps ("still tracking, not captured yet" vs
+   "confirm/adjust this crop") read as visually distinct at a glance. */
+.live-quad-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+.live-quad-overlay polygon {
+  fill: var(--good); fill-opacity: 0.15; /* fill-opacity, not color-mix(), for older WebView compatibility */
+  stroke: var(--good);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
 .scan-controls { padding: 16px 20px; }
 
 /* Tap-to-focus feedback ring (js/app.js's showFocusRing) */
