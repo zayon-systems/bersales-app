@@ -187,9 +187,39 @@ html, body {
 
 /* Scan screen */
 .scan-body { padding: 0; position: relative; }
-#scan-video, #scan-canvas { width: 100%; display: block; background: black; }
+/* Camera streams from getUserMedia come back in whatever aspect ratio the
+   hardware + browser rotation produces — on most phones held upright that's
+   a TALL image (height roughly 16:9 of the width), which at a forced
+   width:100% rendered taller than the viewport and pushed the Capture
+   button below the fold, forcing a scroll to reach it. width/height:auto
+   with a max-height instead lets the element scale down to fit on screen
+   while its rendered box stays pixel-for-pixel the same shape as the actual
+   image (no cropping, no letterbox-vs-image mismatch) — that matters
+   because the crop-handle math in setupCropUI()/updateHandlePositions()
+   above maps corner coordinates using this element's own
+   getBoundingClientRect(), which would go wrong under something like
+   object-fit:cover. Trade-off: on a very tall/narrow stream this can leave
+   black bars beside the image rather than filling the full width — accepted
+   deliberately so the capture button stays reachable without scrolling. */
+#scan-video, #scan-canvas {
+  display: block; width: auto; max-width: 100%;
+  height: auto; max-height: 48vh;
+  background: black;
+}
 .crop-overlay { position: absolute; top: 0; left: 0; }
 .scan-controls { padding: 16px 20px; }
+
+/* Tap-to-focus feedback ring (js/app.js's showFocusRing) */
+.focus-ring {
+  position: absolute; width: 56px; height: 56px; margin: -28px;
+  border: 2px solid var(--accent); border-radius: 8px;
+  pointer-events: none; z-index: 6;
+  animation: focus-ring-pulse 0.5s ease-out forwards;
+}
+@keyframes focus-ring-pulse {
+  0% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
 .image-preview { margin-bottom: 14px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
 .image-preview img { width: 100%; display: block; }
 

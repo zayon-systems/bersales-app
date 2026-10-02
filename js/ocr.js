@@ -44,7 +44,18 @@ const OCR = (() => {
   // Very deliberately simple heuristics — this is a starting point for the
   // user to correct, not a parser that needs to be "right".
   const DATE_RE = /\b(\d{1,2}[\/\-. ]\d{1,2}[\/\-. ]\d{2,4}|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}|[A-Z][a-z]{2,8}\.?\s+\d{1,2},?\s+\d{4})\b/g;
-  const NUMBER_RE = /\b[A-Z0-9]{5,}[-][A-Z0-9-]{2,}\b|\b[A-Z]{1,3}\d{6,}\b|\b\d{2}-\d{7,10}\b/g;
+  // Widened from the original (which only matched a couple of specific
+  // dash patterns, e.g. driver's license numbers) because most PH ID
+  // numbers don't fit those shapes: SSS is 2-7-1 digits, PhilHealth is
+  // 2-9-1, Pag-IBIG/UMID is 4-4-4, TIN is 3-3-3(-3), NBI/police reference
+  // numbers are often plain long digit runs. This instead matches any
+  // dash-separated run of letters/digits whose first group is at least 3
+  // characters and contains a digit somewhere — broad enough to catch
+  // those formats (and, worst case, grab the number minus a short leading
+  // group like SSS's 2-digit prefix) while still requiring a digit so it
+  // doesn't grab plain all-caps words off the document (e.g. "REPUBLIC",
+  // "PHILIPPINES"). Still a draft guess, not a validator — see file header.
+  const NUMBER_RE = /\b(?=[A-Z0-9-]*\d)[A-Z0-9]{3,}(?:-[A-Z0-9]{1,})*\b/g;
 
   function guessFields(text, docType) {
     const template = DOC_TYPES[docType];
@@ -52,20 +63,39 @@ const OCR = (() => {
     if (!template) return guesses;
 
     const dates = [...text.matchAll(DATE_RE)].map((m) => m[0]);
-    const numbers = [...text.matchAll(NUMBER_RE)].map((m) => m[0]);
+    // Now that NUMBER_RE is broad enough to match a bare 3-4 digit group
+    // (needed for TIN/UMID-style numbers — see NUMBER_RE comment), it will
+    // also pick up a lone year out of a date like "Jan 1, 1990" as its own
+    // "number" match. Drop any number match that's fully contained inside
+    // an already-found date so a stray year can't hijack the ID-number
+    // guess ahead of the document's actual ID number.
+    const numbers = [...text.matchAll(NUMBER_RE)]
+      .map((m) => m[0])
+      .filter((n) => !dates.some((d) => d.includes(n)));
+
+    // The "other" (non-expiry) date-shaped field on this template — e.g.
+    // issueDate on most document types, but gun_registration instead calls
+    // this cardPrintedDate. Generalized to any field name matching the same
+    // /Date$|Expiry$/i pattern app.js's buildForm() uses to render date
+    // inputs, rather than hardcoding the literal name 'issueDate', so this
+    // keeps working for a document type whose "other date" field has a
+    // different name.
+    const otherDateField = template.fields.find(
+      (f) => f !== template.expiryField && /Date$|Expiry$/i.test(f)
+    );
 
     // Heuristic: if there's an expiry-type field and 2+ dates were found,
-    // assume the later date is the expiry and the earlier is the issue date.
+    // assume the later date is the expiry and the earlier is the other date.
     if (dates.length >= 2) {
       const sorted = [...dates].sort();
-      if (template.fields.includes('issueDate')) guesses.issueDate = sorted[0];
+      if (otherDateField) guesses[otherDateField] = sorted[0];
       const expiryField = template.expiryField;
       if (expiryField && template.fields.includes(expiryField)) guesses[expiryField] = sorted[sorted.length - 1];
     } else if (dates.length === 1) {
       if (template.expiryField && template.fields.includes(template.expiryField)) {
         guesses[template.expiryField] = dates[0];
-      } else if (template.fields.includes('issueDate')) {
-        guesses.issueDate = dates[0];
+      } else if (otherDateField) {
+        guesses[otherDateField] = dates[0];
       }
     }
 

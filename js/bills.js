@@ -16,6 +16,9 @@ const BILL_CATEGORIES = [
   { id: 'internet', label: 'Internet' },
   { id: 'phone', label: 'Phone' },
   { id: 'insurance', label: 'Insurance' },
+  { id: 'shopping', label: 'Online Shopping (Shopee, Lazada, etc.)' },
+  { id: 'gadget', label: 'Gadget Purchase' },
+  { id: 'service_fee', label: 'Service Fee' },
   { id: 'other', label: 'Other' }
 ];
 

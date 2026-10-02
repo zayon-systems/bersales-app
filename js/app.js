@@ -388,7 +388,12 @@
     const template = DOC_TYPES[doc.docType];
     if (!template) return '';
     const nameField = template.fields.find((f) => /Name$|^fullName$|^title$|^itemName$/.test(f));
-    return (nameField && doc.fields[nameField]) || '';
+    if (nameField && doc.fields[nameField]) return doc.fields[nameField];
+    // LTOPF and PTCFOR have no person-name field at all (they're defined by
+    // the firearm's own details, not the holder's name) — fall back to the
+    // type's first field so the Vault card subtitle isn't left blank.
+    const firstField = template.fields[0];
+    return (firstField && doc.fields[firstField]) || '';
   }
 
   function escapeHtml(str) {
@@ -437,6 +442,32 @@
       goToDocForm();
     }
   });
+
+  // Tap-to-focus on the live preview — the same gesture CamScanner/most
+  // camera apps use when autofocus guesses wrong on a close-up, low-contrast
+  // document. Bound once here (not inside startScanScreen, which re-runs on
+  // every retake) so it doesn't pile up duplicate listeners across retakes.
+  // Scanner.focusAt() is a quiet no-op on devices/browsers that don't expose
+  // focus control, so this is always safe to attempt.
+  document.getElementById('scan-video').addEventListener('click', async (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const xFrac = (e.clientX - rect.left) / rect.width;
+    const yFrac = (e.clientY - rect.top) / rect.height;
+    const supported = await Scanner.focusAt(xFrac, yFrac);
+    if (supported) showFocusRing(e.clientX, e.clientY);
+  });
+
+  function showFocusRing(clientX, clientY) {
+    const body = document.querySelector('.scan-body');
+    const bodyRect = body.getBoundingClientRect();
+    const ring = document.createElement('div');
+    ring.className = 'focus-ring';
+    ring.style.left = (clientX - bodyRect.left) + 'px';
+    ring.style.top = (clientY - bodyRect.top) + 'px';
+    body.appendChild(ring);
+    setTimeout(() => ring.remove(), 500);
+  }
 
   document.getElementById('btn-scan-capture').addEventListener('click', () => {
     const canvas = Scanner.capturePhoto();
@@ -496,28 +527,53 @@
       <svg class="crop-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;">
         <polygon id="crop-poly" fill="rgba(249,8,2,0.15)" stroke="#f90802" stroke-width="2"></polygon>
       </svg>
-      ${corners.map((_, i) => `<div class="crop-handle" data-idx="${i}" style="position:absolute;width:28px;height:28px;margin:-14px;border-radius:50%;background:#f90802;border:3px solid white;touch-action:none;"></div>`).join('')}
+      ${corners.map((_, i) => `<div class="crop-handle" data-idx="${i}" style="position:absolute;width:36px;height:36px;margin:-18px;border-radius:50%;background:#f90802;border:3px solid white;touch-action:none;"></div>`).join('')}
     `;
     updateHandlePositions();
     overlay.querySelectorAll('.crop-handle').forEach((handle) => {
       handle.addEventListener('pointerdown', (e) => {
         handle.setPointerCapture(e.pointerId);
+        // The rect/scale are fixed for the whole drag (the canvas doesn't
+        // resize mid-drag), so they're computed once here instead of inside
+        // onMove — the previous version called getBoundingClientRect() on
+        // every single pointermove, forcing a layout reflow each time, which
+        // is what made corner dragging feel laggy/unresponsive. Pending
+        // moves are also coalesced to one requestAnimationFrame callback,
+        // since pointermove can fire far faster than the screen can repaint.
+        const rect = displayCanvas.getBoundingClientRect();
+        const scaleX = sourceCanvas.width / rect.width;
+        const scaleY = sourceCanvas.height / rect.height;
+        let pendingPoint = null;
+        let rafScheduled = false;
+        const applyPending = () => {
+          rafScheduled = false;
+          if (!pendingPoint) return;
+          cropState.corners[handle.dataset.idx].x = pendingPoint.x;
+          cropState.corners[handle.dataset.idx].y = pendingPoint.y;
+          updateHandlePositions();
+        };
         const onMove = (moveEv) => {
-          const rect = displayCanvas.getBoundingClientRect();
           const relX = Math.min(Math.max(moveEv.clientX - rect.left, 0), rect.width);
           const relY = Math.min(Math.max(moveEv.clientY - rect.top, 0), rect.height);
-          const scaleX = sourceCanvas.width / rect.width;
-          const scaleY = sourceCanvas.height / rect.height;
-          cropState.corners[handle.dataset.idx].x = relX * scaleX;
-          cropState.corners[handle.dataset.idx].y = relY * scaleY;
-          updateHandlePositions();
+          pendingPoint = { x: relX * scaleX, y: relY * scaleY };
+          if (!rafScheduled) {
+            rafScheduled = true;
+            requestAnimationFrame(applyPending);
+          }
         };
         const onUp = () => {
           handle.removeEventListener('pointermove', onMove);
           handle.removeEventListener('pointerup', onUp);
+          handle.removeEventListener('pointercancel', onUp);
         };
         handle.addEventListener('pointermove', onMove);
         handle.addEventListener('pointerup', onUp);
+        // pointercancel (the system interrupting the gesture — e.g. an
+        // incoming call, or the OS claiming the touch for a system
+        // gesture) was previously unhandled, leaving the pointermove
+        // listener attached and making the next drag on that handle behave
+        // erratically.
+        handle.addEventListener('pointercancel', onUp);
       });
     });
 
@@ -637,7 +693,7 @@
     const form = document.getElementById('doc-form');
     form.innerHTML = template.fields.map((field) => {
       const isDate = /Date$|Expiry$/i.test(field);
-      const label = FIELD_LABELS[field] || field;
+      const label = (template.fieldLabels && template.fieldLabels[field]) || FIELD_LABELS[field] || field;
       let value = prefill[field] || '';
       if (isDate && value) {
         const d = new Date(value);
@@ -678,9 +734,22 @@
     } else {
       await Vault.addDocument(payload);
     }
+    // Stay on this form instead of returning to the Vault list — cleared
+    // back to a blank form for the SAME document type/category (so adding
+    // several of one type, e.g. multiple receipts, doesn't mean re-picking
+    // the type each time). "+ Add Another Page" below still works off a
+    // fresh, empty photo list. Applies after editing an existing document
+    // too: a save there also clears the screen rather than showing the
+    // document you just edited — worth a look if that's not what you want,
+    // since unlike the other forms here, this one can't just re-open blank
+    // where it started (there's no list screen in between).
     editingDocId = null;
-    addFlow = null;
-    showScreen('vault');
+    document.getElementById('btn-doc-delete').hidden = true;
+    document.getElementById('doc-form-title').textContent = template.label;
+    document.getElementById('ocr-status').hidden = true;
+    addFlow = { docType: addFlow.docType, category: addFlow.category, imageDataUrls: [] };
+    renderImagePreviewStrip();
+    buildForm(template, {});
   });
 
   document.getElementById('btn-doc-delete').addEventListener('click', async () => {
@@ -793,8 +862,11 @@
     } else {
       await Debts.addDebt(payload);
     }
-    editingDebtId = null;
-    showScreen('debts');
+    // Stay on this form instead of returning to the Debts list — clears back
+    // to a blank "Add Debt" state (openDebtForEdit already knows how to do
+    // that when passed no id) so another entry can be logged right away.
+    // Applies after editing an existing debt too, not just adding a new one.
+    openDebtForEdit(null);
   });
 
   document.getElementById('btn-debt-delete').addEventListener('click', async () => {
@@ -909,8 +981,9 @@
     } else {
       await Bills.addBill(payload);
     }
-    editingBillId = null;
-    showScreen('bills');
+    // Stay on this form, cleared back to a blank "Add Bill" state, rather
+    // than returning to the Bills list — same pattern as Debts above.
+    openBillForEdit(null);
   });
 
   document.getElementById('btn-bill-delete').addEventListener('click', async () => {
@@ -999,9 +1072,11 @@
     } else {
       await CreditCards.addCard(payload);
     }
-    editingCardId = null;
+    // Stay on this form, cleared back to a blank "Add Credit Card" state,
+    // rather than returning to the Bills screen. activeBillsTab is kept in
+    // sync anyway, in case the back arrow is used afterward.
     activeBillsTab = 'creditcards';
-    showScreen('bills');
+    openCreditCardForEdit(null);
   });
 
   document.getElementById('btn-cc-delete').addEventListener('click', async () => {
@@ -1104,9 +1179,10 @@
     } else {
       await Health.addReminder(payload);
     }
-    editingHealthId = null;
+    // Stay on this form, cleared back to a blank "Add Health Reminder"
+    // state, rather than returning to the More list.
     activeMoreTab = 'health';
-    showScreen('more');
+    openHealthForEdit(null);
   });
 
   document.getElementById('btn-health-delete').addEventListener('click', async () => {
@@ -1136,7 +1212,9 @@
     listEl.innerHTML = items.map((todo) => {
       const progress = Todos.checklistProgress(todo);
       const subParts = [];
-      if (todo.dueDate) subParts.push(`Due ${todo.dueDate}`);
+      if (todo.startDate && todo.dueDate) subParts.push(`${todo.startDate} – ${todo.dueDate}`);
+      else if (todo.dueDate) subParts.push(`Due ${todo.dueDate}`);
+      else if (todo.startDate) subParts.push(`Starts ${todo.startDate}`);
       if (progress.total) subParts.push(`${progress.done}/${progress.total} steps`);
       return `<div class="doc-card">
         <div class="doc-card-clickarea" data-id="${todo.id}" style="flex:1;cursor:pointer;">
@@ -1188,13 +1266,14 @@
     document.getElementById('todo-checklist-section').hidden = !id;
     document.getElementById('todo-checklist-hint').hidden = !!id;
 
-    let todo = { title: '', dueDate: '', notes: '', done: false, checklist: [] };
+    let todo = { title: '', startDate: '', dueDate: '', notes: '', done: false, checklist: [] };
     if (id) {
       const existing = await Todos.getTodo(id);
       if (existing) todo = existing;
     }
     document.getElementById('todo-form-title').textContent = id ? 'Edit To-Do' : 'Add To-Do';
     document.getElementById('todo-title').value = todo.title;
+    document.getElementById('todo-startDate').value = todo.startDate || '';
     document.getElementById('todo-dueDate').value = todo.dueDate;
     document.getElementById('todo-notes').value = todo.notes;
     document.getElementById('todo-done').checked = !!todo.done;
@@ -1204,18 +1283,25 @@
   document.getElementById('btn-todo-save').addEventListener('click', async () => {
     const payload = {
       title: document.getElementById('todo-title').value,
+      startDate: document.getElementById('todo-startDate').value,
       dueDate: document.getElementById('todo-dueDate').value,
       notes: document.getElementById('todo-notes').value,
       done: document.getElementById('todo-done').checked
     };
     if (editingTodoId) {
       await Todos.updateTodo(editingTodoId, payload);
+      // Stay on this form, cleared back to a blank "Add To-Do" state,
+      // rather than returning to the More list — same pattern as the other
+      // forms above.
       activeMoreTab = 'todos';
-      showScreen('more');
+      openTodoForEdit(null);
     } else {
-      // Re-open the just-created to-do in edit mode instead of bouncing to
-      // the list, so checklist steps can be added right away without an
-      // extra tap back in.
+      // Deliberate exception to "clear and stay" for a brand-new to-do:
+      // re-open it in edit mode instead, so checklist steps can be added
+      // right away without an extra tap back in (checklist editing only
+      // unlocks once the to-do has an id — see the hint text on this
+      // screen). Editing an existing to-do (above) doesn't have that
+      // need, so it clears normally.
       const created = await Todos.addTodo(payload);
       await openTodoForEdit(created.id);
     }

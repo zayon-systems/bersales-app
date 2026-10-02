@@ -23,7 +23,8 @@ const Todos = (() => {
     const record = {
       id,
       title: item.title || '',
-      dueDate: item.dueDate || '',
+      startDate: item.startDate || '',
+      dueDate: item.dueDate || '', // the task's end/target-completion date — label reads "End Date" in the form now that a range is supported
       notes: item.notes || '',
       done: false,
       checklist: [],

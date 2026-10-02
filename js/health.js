@@ -36,7 +36,7 @@ const Health = (() => {
       reminderName: item.reminderName || '',
       type: item.type || 'other',
       dueDate: item.dueDate || '',
-      recurring: item.recurring || 'none', // 'none' | 'monthly' | 'quarterly' | 'yearly'
+      recurring: item.recurring || 'none', // 'none' | 'monthly' | 'quarterly' | 'biannual' | 'yearly'
       notes: item.notes || '',
       done: false,
       createdAt: now,

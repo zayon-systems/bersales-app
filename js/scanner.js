@@ -29,12 +29,60 @@ const Scanner = (() => {
     });
     videoEl.srcObject = stream;
     await videoEl.play();
+    applyContinuousFocus();
   }
 
   function stopCamera() {
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
       stream = null;
+    }
+  }
+
+  // --- Focus -------------------------------------------------------------
+  //
+  // Document scanning is a close-up, macro-range shot, and a lot of Android
+  // camera stacks hand a fresh getUserMedia track a focus mode/distance
+  // tuned for general photography rather than paperwork inches from the
+  // lens — which is why "the scanner can't focus" is a real complaint even
+  // on phones whose own camera app focuses on documents fine. These are
+  // applied via applyConstraints (not requested in the initial
+  // getUserMedia() call above) because focus capabilities are only
+  // queryable once the track exists, and plenty of devices/browsers expose
+  // none of this at all — both functions are wrapped so that's a silent
+  // no-op, never a hard failure.
+
+  async function applyContinuousFocus() {
+    try {
+      const track = stream && stream.getVideoTracks()[0];
+      if (!track || !track.getCapabilities) return;
+      const caps = track.getCapabilities();
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      }
+    } catch (e) {
+      // Not supported here — camera keeps whatever default focus it started with.
+    }
+  }
+
+  // Tap-to-focus: re-triggers focus at a point in the frame, the same
+  // gesture CamScanner/most camera apps use when autofocus guesses wrong on
+  // a close, low-contrast document. xFrac/yFrac are 0..1 within the visible
+  // video frame. Returns false (quietly) on hardware/browsers that don't
+  // expose pointsOfInterest, so the caller can skip showing feedback.
+  async function focusAt(xFrac, yFrac) {
+    try {
+      const track = stream && stream.getVideoTracks()[0];
+      if (!track || !track.getCapabilities) return false;
+      const caps = track.getCapabilities();
+      if (!caps.pointsOfInterest) return false;
+      const advanced = { pointsOfInterest: [{ x: xFrac, y: yFrac }] };
+      if (caps.focusMode && caps.focusMode.includes('single-shot')) advanced.focusMode = 'single-shot';
+      else if (caps.focusMode && caps.focusMode.includes('continuous')) advanced.focusMode = 'continuous';
+      await track.applyConstraints({ advanced: [advanced] });
+      return true;
+    } catch (e) {
+      return false;
     }
   }
 
@@ -302,5 +350,5 @@ const Scanner = (() => {
     return canvas;
   }
 
-  return { startCamera, stopCamera, capturePhoto, warpToRectangle, defaultCorners, autoDetectCorners, enhanceCanvas };
+  return { startCamera, stopCamera, capturePhoto, warpToRectangle, defaultCorners, autoDetectCorners, enhanceCanvas, focusAt };
 })();

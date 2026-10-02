@@ -87,6 +87,12 @@ const DOC_TYPES = {
     fields: ['fullName', 'pagibigNumber', 'issueDate'],
     expiryField: null
   },
+  umid: {
+    label: 'Unified Multipurpose ID (UMID)',
+    category: 'government',
+    fields: ['fullName', 'umidNumber', 'issueDate'],
+    expiryField: null
+  },
   vehicle_registration: {
     label: 'Vehicle Registration (OR/CR)',
     category: 'vehicle',
@@ -153,22 +159,34 @@ const DOC_TYPES = {
     fields: ['fullName', 'memberNumber', 'provider', 'issueDate', 'expiryDate'],
     expiryField: 'expiryDate'
   },
+  // LTOPF, Firearm Registration, and PTCFOR all reuse the shared 'issueDate'/
+  // 'expiryDate' field keys (so ocr.js's date-guessing heuristic and the
+  // isDate-detection in buildForm() keep working the same as every other
+  // document type), but each wants its own wording on the card rather than
+  // the generic "Issue Date"/"Expiry Date" every other type shows. That's
+  // what the optional `fieldLabels` map below is for: buildForm() checks it
+  // before falling back to the global FIELD_LABELS, so the override is
+  // purely cosmetic and never affects what key the value is actually stored
+  // under.
   ltopf: {
     label: 'LTOPF (License to Own and Possess Firearm)',
     category: 'government',
-    fields: ['fullName', 'ltopfNumber', 'issuingOffice', 'issueDate', 'expiryDate'],
+    fields: ['ltopfNumber', 'qualification', 'issueDate', 'expiryDate'],
+    fieldLabels: { ltopfNumber: 'LTOPF ID', issueDate: 'Date Approved', expiryDate: 'Expiration Date' },
     expiryField: 'expiryDate'
   },
   gun_registration: {
-    label: 'Firearm Registration (COR)',
+    label: 'Firearm Registration',
     category: 'government',
-    fields: ['fullName', 'makeModel', 'caliber', 'serialNumber', 'corNumber', 'issueDate', 'expiryDate'],
+    fields: ['fullName', 'makeModel', 'caliber', 'serialNumber', 'issueDate', 'expiryDate'],
+    fieldLabels: { issueDate: 'Card Printed Date' },
     expiryField: 'expiryDate'
   },
   ptcfor: {
     label: 'PTCFOR (Permit to Carry Firearm Outside Residence)',
     category: 'government',
-    fields: ['fullName', 'ptcforNumber', 'issuingOffice', 'issueDate', 'expiryDate'],
+    fields: ['controlNumber', 'serialNumber', 'kind', 'make', 'caliber', 'issueDate', 'expiryDate'],
+    fieldLabels: { issueDate: 'Date Issued', expiryDate: 'Expiration Date' },
     expiryField: 'expiryDate'
   },
   dti_business_registration: {
@@ -256,6 +274,7 @@ const FIELD_LABELS = {
   sssNumber: 'SSS Number',
   philhealthNumber: 'PhilHealth Number',
   pagibigNumber: 'Pag-IBIG Number',
+  umidNumber: 'UMID Number',
   ownerName: "Owner's Name",
   plateNumber: 'Plate Number',
   orNumber: 'OR Number',
@@ -284,13 +303,13 @@ const FIELD_LABELS = {
   membershipNumber: 'Membership Number',
   organization: 'Organization',
   memberNumber: 'Member Number',
-  ltopfNumber: 'LTOPF Number',
-  issuingOffice: 'Issuing Office',
+  ltopfNumber: 'LTOPF Number', // default label; ltopf's own template overrides this to "LTOPF ID" via fieldLabels
   makeModel: 'Make / Model',
   caliber: 'Caliber',
   serialNumber: 'Serial Number',
-  corNumber: 'COR Number',
-  ptcforNumber: 'PTCFOR Number',
+  kind: 'Kind',
+  make: 'Make',
+  qualification: 'Qualification',
   certificateNumber: 'Certificate Number',
   scope: 'Scope (Barangay / City / Regional / National)',
   rdoCode: 'RDO Code',

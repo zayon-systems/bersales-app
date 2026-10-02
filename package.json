@@ -1,6 +1,6 @@
 {
   "name": "bersales-app",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Bersales Secure — secure, local-only personal document vault and life organizer. Standalone PWA (HTML/CSS/JS, no build step); packaged into an Android APK via Capacitor + GitHub Actions (CI build, no Median dependency).",
   "main": "service-worker.js",
   "scripts": {
