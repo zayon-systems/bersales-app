@@ -64,6 +64,7 @@ html, body {
   padding: 60px 24px 24px;
   text-align: center;
 }
+.logo-badge { width: 96px; height: auto; display: block; margin: 0 auto 12px; }
 .logo { font-size: 32px; margin: 0 0 4px; letter-spacing: 0.5px; }
 .tagline { color: var(--text-dim); margin: 0 0 20px; }
 .sub { color: var(--text-dim); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
@@ -217,6 +218,15 @@ html, body {
   background: var(--surface); border-top: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-around; z-index: 10;
 }
+/* `display: flex` above has the same specificity as the browser's own
+   [hidden] { display: none }, and author styles win that tie — so without
+   this rule, the "hidden" attribute app.js sets on #bottom-nav before PIN
+   unlock (unlockedUI(false)) is silently ignored and the nav bar renders
+   anyway, letting someone tap into Vault/Bills/etc. without ever entering a
+   PIN. The screens behind those taps still can't decrypt anything (Crypto's
+   session key is null until unlockWithPin() succeeds), but the nav chrome
+   itself shouldn't be reachable pre-unlock in the first place. */
+.bottom-nav[hidden] { display: none; }
 .nav-btn {
   background: none; border: none; color: var(--text-dim); font-size: 10px;
   display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; padding: 6px 4px;

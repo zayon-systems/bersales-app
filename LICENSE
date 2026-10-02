@@ -2,7 +2,7 @@ Copyright (c) 2026 Zayon Systems. All rights reserved.
 
 This repository and its contents (source code, assets, and documentation) are
 made publicly viewable for transparency — so that anyone evaluating or using
-the Bersales app can inspect how it works, verify its privacy and security
+the Bersales Secure app can inspect how it works, verify its privacy and security
 claims (local-only storage, on-device encryption, no server, no analytics),
 and confirm there is no hidden network activity or backdoor.
 

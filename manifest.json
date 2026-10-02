@@ -1,7 +1,7 @@
 {
-  "name": "Bersales",
-  "short_name": "Bersales",
-  "description": "Your documents. Your data. Your control.",
+  "name": "Bersales Secure",
+  "short_name": "Bersales Secure",
+  "description": "Document vault & Personal Organizer",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b0b0c",

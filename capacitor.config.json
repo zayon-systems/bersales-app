@@ -1,6 +1,6 @@
 {
   "appId": "com.zayonsystems.bersales",
-  "appName": "Bersales",
+  "appName": "Bersales Secure",
   "webDir": "www",
   "bundledWebRuntime": false,
   "android": {

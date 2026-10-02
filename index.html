@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Bersales</title>
-<meta name="description" content="Your documents. Your data. Your control." />
+<title>Bersales Secure</title>
+<meta name="description" content="Document vault & Personal Organizer" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="assets/icons/icon-192.png" />
 <meta name="theme-color" content="#0b0b0c" />
@@ -29,9 +29,10 @@
 <!-- ============ PIN SETUP ============ -->
 <section id="screen-pin-setup" class="screen">
   <div class="centered-card">
-    <h1 class="logo">Bersales</h1>
-    <p class="tagline">Your documents. Your data. Your control.</p>
-    <p class="sub">Set a PIN or password to lock your vault. This never leaves your device, and Bersales has no way to reset it for you — if you forget it, your data cannot be recovered.</p>
+    <img class="logo-badge" src="assets/icons/logo-shield.png" alt="Bersales Secure" />
+    <h1 class="logo">Bersales Secure</h1>
+    <p class="tagline">Document Vault. Personal Organizer.</p>
+    <p class="sub">Set a PIN or password to lock your vault. This never leaves your device, and Bersales Secure has no way to reset it for you — if you forget it, your data cannot be recovered.</p>
     <input id="pin-setup-1" type="password" inputmode="numeric" placeholder="Create PIN / password" class="pin-input" />
     <input id="pin-setup-2" type="password" inputmode="numeric" placeholder="Confirm PIN / password" class="pin-input" />
     <p id="pin-setup-error" class="error-text"></p>
@@ -43,7 +44,8 @@
 <!-- ============ LOCK SCREEN ============ -->
 <section id="screen-lock" class="screen">
   <div class="centered-card">
-    <h1 class="logo">Bersales</h1>
+    <img class="logo-badge" src="assets/icons/logo-shield.png" alt="Bersales Secure" />
+    <h1 class="logo">Bersales Secure</h1>
     <p class="tagline">Enter your PIN to unlock</p>
     <input id="pin-lock-input" type="password" inputmode="numeric" placeholder="PIN / password" class="pin-input" />
     <p id="pin-lock-error" class="error-text"></p>
@@ -303,15 +305,23 @@
         <option value="dark">Dark</option>
       </select>
     </div>
+    <div class="form-field">
+      <label>Auto-Lock</label>
+      <select id="autolock-select" class="select-input">
+        <option value="3">After 3 minutes of inactivity</option>
+        <option value="5">After 5 minutes of inactivity</option>
+      </select>
+      <p class="fineprint">Bersales Secure locks itself and asks for your PIN again after this much time with no activity in the app.</p>
+    </div>
     <button id="btn-change-pin" class="btn-secondary full-width">Change PIN / Password</button>
     <button id="btn-export" class="btn-secondary full-width">Export Encrypted Backup File</button>
     <button id="btn-lock-now" class="btn-secondary full-width">Lock Vault Now</button>
     <div class="privacy-card">
       <h3>Privacy &amp; Data</h3>
-      <p>All documents, images, and records are stored only on this device, encrypted with a key derived from your PIN. Bersales has no server and does not transmit, back up, or have access to your data. Sharing a document (via Messenger, Viber, email, etc.) uses your device's own share feature — once shared, that copy is no longer protected by Bersales's encryption.</p>
-      <p>Because there is no cloud backup, losing or resetting this device means your Bersales data cannot be recovered unless you've made your own export. Use "Export Encrypted Backup File" periodically and store the file somewhere safe.</p>
+      <p>All documents, images, and records are stored only on this device, encrypted with a key derived from your PIN. Bersales Secure has no server and does not transmit, back up, or have access to your data. Sharing a document (via Messenger, Viber, email, etc.) uses your device's own share feature — once shared, that copy is no longer protected by Bersales Secure's encryption.</p>
+      <p>Because there is no cloud backup, losing or resetting this device means your Bersales Secure data cannot be recovered unless you've made your own export. Use "Export Encrypted Backup File" periodically and store the file somewhere safe.</p>
     </div>
-    <p class="fineprint app-version">Bersales v1.4.0 — vault, scanning, debts, bills, credit cards, health reminders, to-dos; family profiles and vehicle/property record UI are planned for a later phase</p>
+    <p class="fineprint app-version">Bersales Secure v1.4.0 — vault, scanning, debts, bills, credit cards, health reminders, to-dos; family profiles and vehicle/property record UI are planned for a later phase</p>
   </div>
 </section>
 

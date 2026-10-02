@@ -23,7 +23,6 @@
   let activeMoreTab = 'health'; // 'health' | 'todos'
   let cropState = null; // { canvas, corners:[{x,y}...], scale }
   let lastActivity = Date.now();
-  const AUTO_LOCK_MS = 5 * 60 * 1000; // 5 minutes idle
 
   function peso(n) {
     const num = Number(n) || 0;
@@ -77,6 +76,36 @@
     setThemePref(e.target.value);
   });
 
+  // --- Auto-Lock (idle timeout) -----------------------------------------
+  //
+  // Same reasoning as the theme preference above: this is a UI/security
+  // setting, not vault data, so it lives in plain localStorage rather than
+  // the encrypted store — it needs to be readable by the idle-check
+  // interval below regardless of lock state. Only 3 or 5 minutes are
+  // offered, per spec; getAutoLockMinutes() still falls back sanely if
+  // localStorage ever holds something else (a stale value from a future
+  // version, manual tampering, etc.).
+
+  const AUTOLOCK_KEY = 'bersales_autolock_minutes';
+  const AUTOLOCK_DEFAULT_MINUTES = 5;
+
+  function getAutoLockMinutes() {
+    const stored = Number(localStorage.getItem(AUTOLOCK_KEY));
+    return stored === 3 || stored === 5 ? stored : AUTOLOCK_DEFAULT_MINUTES;
+  }
+
+  function getAutoLockMs() {
+    return getAutoLockMinutes() * 60 * 1000;
+  }
+
+  function setAutoLockPref(minutes) {
+    localStorage.setItem(AUTOLOCK_KEY, String(minutes));
+  }
+
+  document.getElementById('autolock-select').addEventListener('change', (e) => {
+    setAutoLockPref(Number(e.target.value));
+  });
+
   // --- Screen navigation -----------------------------------------------
 
   function showScreen(name) {
@@ -123,7 +152,7 @@
     document.addEventListener(ev, () => { lastActivity = Date.now(); })
   );
   setInterval(() => {
-    if (Crypto.isUnlocked() && Date.now() - lastActivity > AUTO_LOCK_MS) {
+    if (Crypto.isUnlocked() && Date.now() - lastActivity > getAutoLockMs()) {
       lockVault();
     }
   }, 15000);
@@ -1263,6 +1292,7 @@
   function boot() {
     applyTheme();
     document.getElementById('theme-select').value = getThemePref();
+    document.getElementById('autolock-select').value = String(getAutoLockMinutes());
     populateBillCategorySelect();
     populateHealthTypeSelect();
     if (Crypto.isPinSet()) {

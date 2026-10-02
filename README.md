@@ -1,8 +1,10 @@
-# Bersales — v1 build
+# Bersales Secure — v1 build
 
 Standalone PWA (HTML/CSS/JS, no build step) — same pattern as PER: deploy to GitHub Pages, wrap into an Android APK with Median.co.
 
 **Renamed from Civora to Bersales (2026-10-01).** This is a product name, not a company name — Zayon Systems is still the company this ships under. The rename touched the app's display name, icons, color palette (now matched to the Bersales logo), and the internal storage keys/IndexedDB name (`bersales_salt`, `bersales_db`, etc., previously `civora_*`). If you loaded the old Civora build on a test phone, this version won't see that old data — it's a fresh vault under new keys.
+
+**Renamed again, Bersales → Bersales Secure (2026-10-02), with new shield/snake branding.** Display name only this time — the Android package ID (`com.zayonsystems.bersales`) and the storage keys/IndexedDB name (`bersales_salt`, `bersales_db`) are unchanged on purpose, so this is a normal in-place update: existing installs keep their vault data, no uninstall needed for this change.
 
 ## What's in this build
 
