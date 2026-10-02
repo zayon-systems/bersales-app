@@ -10,7 +10,7 @@
 //   3. Static assets (css/js/icons) are cache-first for speed, but are keyed
 //      to the versioned cache, so a version bump invalidates them too.
 
-const CACHE_VERSION = 'v1.6.0';
+const CACHE_VERSION = 'v1.6.1';
 const CACHE_NAME = `bersales-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [

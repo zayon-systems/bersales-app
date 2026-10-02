@@ -182,6 +182,55 @@
     showScreen('home');
   });
 
+  // --- Restore from backup file (fresh install / new device) -------------
+  //
+  // This is the actual fix for "I had to uninstall to update, and lost
+  // everything": Export already existed, but nothing read an export file
+  // back in, so a forced reinstall meant starting over. This writes the
+  // backup's salt/verifier/encrypted records straight in and sends the user
+  // to the Lock screen — NOT through "Create Vault" above, which would call
+  // Crypto.setupPin() and generate a brand-new salt/verifier, orphaning the
+  // records this just restored (they're still encrypted under the OLD
+  // PIN's key). The user unlocks with whatever PIN they used when they
+  // created that backup, same as always — there's still no way to reset a
+  // forgotten PIN, restoring a backup doesn't change that.
+  document.getElementById('btn-pin-setup-restore').addEventListener('click', () => {
+    document.getElementById('pin-setup-restore-file').click();
+  });
+
+  document.getElementById('pin-setup-restore-file').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file if this is retried
+    if (!file) return;
+
+    let bundle;
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch (err) {
+      alert("Couldn't read that file — make sure it's an unedited Bersales Secure backup .json file.");
+      return;
+    }
+    if (!bundle || bundle.bersalesBackup !== true || !bundle.salt || !bundle.verifier || !bundle.stores) {
+      alert("That doesn't look like a Bersales Secure backup file.");
+      return;
+    }
+    if (!confirm('Restore this backup into a fresh vault here? You\'ll need the PIN you used when this backup was created to unlock it afterward — not a new one.')) {
+      return;
+    }
+
+    localStorage.setItem('bersales_salt', bundle.salt);
+    localStorage.setItem('bersales_verifier', bundle.verifier);
+    for (const store of DB.STORES) {
+      const rows = bundle.stores[store] || [];
+      for (const row of rows) {
+        await DB.putRaw(store, row.id, row.payload);
+      }
+    }
+
+    alert('Backup restored. Enter the PIN you used when you created this backup to unlock your vault.');
+    showScreen('lock');
+  });
+
   document.getElementById('btn-pin-unlock').addEventListener('click', async () => {
     const pin = document.getElementById('pin-lock-input').value;
     const errEl = document.getElementById('pin-lock-error');
