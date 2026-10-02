@@ -119,6 +119,26 @@ jobs:
           mkdir -p ~/.android
           cp android-debug.keystore ~/.android/debug.keystore
 
+      - name: Verify the signing key actually took (fail loudly, not silently)
+        # Added after discovering the committed android-debug.keystore had
+        # gone bad (likely corrupted on its very first upload) and every
+        # build since had been SILENTLY falling back to a brand-new random
+        # debug key per run — Gradle doesn't error when ~/.android/debug.keystore
+        # is invalid, it just regenerates one on the spot. That meant every
+        # "update" was actually signed differently from the last, so Android
+        # refused to install over the existing app ("App not installed"),
+        # every single time, with no hint in this log that anything was
+        # wrong — the build always showed green. This step reads the key
+        # back with the same keytool Android itself will later check
+        # against, and fails the whole run if it can't, specifically so a
+        # bad keystore shows up as a red X here instead of as a confusing
+        # install failure on someone's phone days later. The fingerprint is
+        # also printed on every successful run — if it ever differs from
+        # the previous run's log, that's this same problem recurring.
+        run: |
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey \
+            || { echo "::error::android-debug.keystore in the repo is missing, corrupted, or doesn't contain the expected 'androiddebugkey' alias — every build until this is fixed will silently sign with a throwaway random key, and installs will keep failing with 'App not installed'. Re-commit a valid debug keystore at the repo root (same path, same androiddebugkey alias, same android/android store+key passwords) and re-run."; exit 1; }
+
       - name: Build the debug APK
         run: |
           cd android
